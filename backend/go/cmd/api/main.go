@@ -10,7 +10,7 @@ import (
 	httpapi "slackgo/internal/http"
 	"slackgo/internal/http/handlers"
 	"slackgo/internal/http/middleware"
-	"slackgo/internal/jwt"
+	jwtutil "slackgo/internal/jwt"
 	"slackgo/internal/ws"
 )
 
@@ -27,7 +27,9 @@ func main() {
 
 	auth := handlers.NewAuthHandler(gdb, jm)
 	msg := handlers.NewMessagesHandler(gdb, hub)
-	router := httpapi.NewRouter(auth, msg, middleware.JWT(jm), hub)
+
+	ch := handlers.NewChannelsHandler(gdb)
+	router := httpapi.NewRouter(auth, msg, ch, middleware.JWT(jm), hub, gdb)
 
 	log.Printf("listening on %s", cfg.BindAddr)
 	if err := router.Run(cfg.BindAddr); err != nil {

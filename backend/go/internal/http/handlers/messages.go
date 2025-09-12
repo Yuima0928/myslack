@@ -22,10 +22,9 @@ func NewMessagesHandler(db *gorm.DB, hub *ws.Hub) *MessagesHandler {
 }
 
 type MsgCreateIn struct {
-	WorkspaceID uuid.UUID `json:"workspace_id" binding:"required"`
-	ChannelID   uuid.UUID `json:"channel_id" binding:"required"`
-	Text        string    `json:"text" binding:"required,min=1"`
+	Text string `json:"text" binding:"required,min=1"`
 }
+
 type MsgOut struct {
 	ID          uuid.UUID `json:"id"`
 	WorkspaceID uuid.UUID `json:"workspace_id"`
@@ -34,51 +33,101 @@ type MsgOut struct {
 	Text        string    `json:"text"`
 }
 
+// POST /channels/:channel_id/messages
 func (h *MessagesHandler) Create(c *gin.Context) {
 	var in MsgCreateIn
 	if err := c.ShouldBindJSON(&in); err != nil {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": err.Error()})
 		return
 	}
-	uid := uuid.MustParse(c.GetString("user_id"))
+
+	uidStr := c.GetString("user_id")
+	chIDStr := c.Param("channel_id")
+	if uidStr == "" || chIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "channel_id required"})
+		return
+	}
+
+	// Channel を取得して WorkspaceID を解決
+	var ch model.Channel
+	if err := h.db.First(&ch, "id = ?", chIDStr).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "channel not found"})
+		return
+	}
+
+	uid := uuid.MustParse(uidStr)
+	chID := uuid.MustParse(chIDStr)
 	text := in.Text
-	m := model.Message{
-		WorkspaceID: in.WorkspaceID,
-		ChannelID:   in.ChannelID,
+
+	msg := model.Message{
+		WorkspaceID: ch.WorkspaceID,
+		ChannelID:   chID,
 		UserID:      &uid,
 		Text:        &text,
 	}
-	if err := h.db.Create(&m).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "insert failed"})
+
+	if err := h.db.Create(&msg).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "create message failed"})
 		return
 	}
-	out := MsgOut{ID: m.ID, WorkspaceID: m.WorkspaceID, ChannelID: m.ChannelID, UserID: *m.UserID, Text: *m.Text}
+
+	out := MsgOut{
+		ID:          msg.ID,
+		WorkspaceID: msg.WorkspaceID,
+		ChannelID:   msg.ChannelID,
+		UserID:      *msg.UserID,
+		Text:        text,
+	}
 	c.JSON(http.StatusOK, out)
 
+	// WSへ通知（任意）
 	ev := map[string]any{"type": "message_created", "message": out}
-	b, _ := json.Marshal(ev)
-	h.hub.Broadcast(m.ChannelID.String(), b)
+	if b, err := json.Marshal(ev); err == nil {
+		h.hub.Broadcast(chID.String(), b)
+	}
 }
 
+// GET /channels/:channel_id/messages
 func (h *MessagesHandler) List(c *gin.Context) {
-	chID := c.Query("channel_id")
-	if chID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "channel_id is required"})
+	chIDStr := c.Param("channel_id")
+	if chIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "channel_id required"})
 		return
 	}
+
 	var rows []model.Message
-	if err := h.db.Where("channel_id = ?", chID).
-		Order("created_at DESC").Limit(50).Offset(0).Find(&rows).Error; err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "list failed"})
+	if err := h.db.
+		Where("channel_id = ?", chIDStr).
+		Order("created_at ASC").
+		Limit(100).
+		Find(&rows).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "query failed"})
 		return
 	}
+
 	out := make([]MsgOut, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, MsgOut{
-			ID: r.ID, WorkspaceID: r.WorkspaceID, ChannelID: r.ChannelID, UserID: *r.UserID, Text: deref(r.Text),
+			ID:          r.ID,
+			WorkspaceID: r.WorkspaceID,
+			ChannelID:   r.ChannelID,
+			UserID:      derefUUID(r.UserID),
+			Text:        derefStr(r.Text),
 		})
 	}
 	c.JSON(http.StatusOK, out)
 }
 
-func deref(s *string) string { if s==nil { return ""}; return *s }
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func derefUUID(u *uuid.UUID) uuid.UUID {
+	if u == nil {
+		return uuid.Nil
+	}
+	return *u
+}
