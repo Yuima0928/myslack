@@ -16,34 +16,46 @@ func NewRouter(
 	auth *handlers.AuthHandler,
 	msg *handlers.MessagesHandler,
 	ch *handlers.ChannelsHandler,
+	wsH *handlers.WorkspacesHandler,
 	jwtMw gin.HandlerFunc,
 	hub *ws.Hub,
-	db *gorm.DB, // ← 追加
+	db *gorm.DB,
 ) *gin.Engine {
 	r := gin.Default()
 
 	r.GET("/health", handlers.Health)
 
-	// 認証まわり
+	// 認証
 	r.POST("/auth/signup", auth.SignUp)
 	r.POST("/auth/login", auth.Login)
 	r.GET("/auth/me", jwtMw, auth.Me)
 
-	// 認証必須グループ
 	api := r.Group("/")
 	api.Use(jwtMw)
 
-	// メッセージ（チャンネルメンバーのみ）
+	// Workspaces
+	api.POST("/workspaces", wsH.Create) // 作成者=owner
+	api.GET("/workspaces", wsH.ListMine)
+	api.GET("/workspaces/:ws_id/members", middleware.RequireWorkspaceMember(db), wsH.ListMembers)
+
+	// Channels under workspace
+	wsGroup := api.Group("/workspaces/:ws_id")
+	wsGroup.Use(middleware.RequireWorkspaceMember(db))
+	// 作成はowner限定にしたい場合は RequireWorkspaceOwner にする
+	wsGroup.POST("/channels", middleware.RequireWorkspaceOwner(db), ch.Create)
+
+	// Channel members（owner限定）
+	chGroup := api.Group("/channels/:channel_id")
+	chGroup.Use(middleware.RequireChannelOwner(db))
+	chGroup.POST("/members", ch.AddMember)
+
+	// Messages（メンバーのみ）
 	msgs := api.Group("/channels/:channel_id/messages")
 	msgs.Use(middleware.RequireChannelMember(db))
 	msgs.POST("", msg.Create)
 	msgs.GET("", msg.List)
 
-	chans := api.Group("/channels")
-	chans.Use(middleware.RequireWorkspaceMember(db))
-	chans.POST("", ch.Create)
-
-	// WebSocket
+	// WebSocket（そのまま）
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 	r.GET("/ws", func(c *gin.Context) {
 		channel := c.Query("channel_id")

@@ -29,7 +29,8 @@ func main() {
 	msg := handlers.NewMessagesHandler(gdb, hub)
 
 	ch := handlers.NewChannelsHandler(gdb)
-	router := httpapi.NewRouter(auth, msg, ch, middleware.JWT(jm), hub, gdb)
+	wsh := handlers.NewWorkspacesHandler(gdb)
+	router := httpapi.NewRouter(auth, msg, ch, wsh, middleware.JWT(jm), hub, gdb)
 
 	log.Printf("listening on %s", cfg.BindAddr)
 	if err := router.Run(cfg.BindAddr); err != nil {

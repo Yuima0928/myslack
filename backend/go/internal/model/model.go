@@ -48,23 +48,24 @@ type Message struct {
 }
 
 type WorkspaceMember struct {
-	UserID      uuid.UUID `gorm:"type:uuid;primaryKey"`
-	WorkspaceID uuid.UUID `gorm:"type:uuid;primaryKey;index"`
-	Role        string    `gorm:"type:text;not null;default:'member'"`
+	UserID      uuid.UUID `gorm:"type:uuid;not null;index:idx_ws_member,unique"`
+	WorkspaceID uuid.UUID `gorm:"type:uuid;not null;index:idx_ws_member,unique"`
+	Role        string    `gorm:"not null;default:member"` // owner/member
+	CreatedAt   time.Time
 
-	// FK
-	User      User      `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE"`
-	Workspace Workspace `gorm:"foreignKey:WorkspaceID;references:ID;constraint:OnDelete:CASCADE"`
+	// FK制約（存在しないIDを防ぐ & cascade）
+	User      User      `gorm:"constraint:OnDelete:CASCADE;foreignKey:UserID;references:ID"`
+	Workspace Workspace `gorm:"constraint:OnDelete:CASCADE;foreignKey:WorkspaceID;references:ID"`
 }
 
 type ChannelMember struct {
-	UserID    uuid.UUID `gorm:"type:uuid;primaryKey"`
-	ChannelID uuid.UUID `gorm:"type:uuid;primaryKey;index"`
-	Role      string    `gorm:"type:text;not null;default:'member'"`
+	UserID    uuid.UUID `gorm:"type:uuid;not null;index:idx_ch_member,unique"`
+	ChannelID uuid.UUID `gorm:"type:uuid;not null;index:idx_ch_member,unique"`
+	Role      string    `gorm:"not null;default:member"` // owner/member
+	CreatedAt time.Time
 
-	// FK
-	User    User    `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE"`
-	Channel Channel `gorm:"foreignKey:ChannelID;references:ID;constraint:OnDelete:CASCADE"`
+	User    User    `gorm:"constraint:OnDelete:CASCADE;foreignKey:UserID;references:ID"`
+	Channel Channel `gorm:"constraint:OnDelete:CASCADE;foreignKey:ChannelID;references:ID"`
 }
 
 func EnableExtensions(db *gorm.DB) error {
