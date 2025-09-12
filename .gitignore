@@ -1,0 +1,36 @@
+# Go
+bin/
+*.exe
+*.out
+*.test
+coverage.*
+
+# Build artifacts
+/app/
+dist/
+tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# Docker
+**/.dockerignore
+node_modules/
+
+# Environments / secrets
+.env
+.env.*.local
+secrets/
+
+# Logs
+logs/
+*.log
+
+# Generated (proto使うならここをメンテ)
+# internal/rpc/**/*.pb.go
+# internal/rpc/**/*_connect.go
