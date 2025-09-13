@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	_ "slackgo/docs"
 	"slackgo/internal/config"
 	"slackgo/internal/db"
 	httpapi "slackgo/internal/http"
@@ -14,6 +15,13 @@ import (
 	"slackgo/internal/ws"
 )
 
+// @title       MySlack API (Go)
+// @version     0.1
+// @description Minimal Slack-like backend with Gin + GORM + WS
+// @BasePath    /
+// @securityDefinitions.apikey Bearer
+// @in header
+// @name Authorization
 func main() {
 	cfg := config.Load()
 

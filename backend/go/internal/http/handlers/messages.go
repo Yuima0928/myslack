@@ -33,7 +33,19 @@ type MsgOut struct {
 	Text        string    `json:"text"`
 }
 
-// POST /channels/:channel_id/messages
+// Create message godoc
+// @Summary Create message
+// @Tags    messages
+// @Accept  json
+// @Produce json
+// @Param   channel_id path string true "Channel ID (UUID)"
+// @Param   body       body MsgCreateIn true "message payload"
+// @Success 200 {object} MsgOut
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Security Bearer
+// @Router  /channels/{channel_id}/messages [post]
 func (h *MessagesHandler) Create(c *gin.Context) {
 	var in MsgCreateIn
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -87,7 +99,17 @@ func (h *MessagesHandler) Create(c *gin.Context) {
 	}
 }
 
-// GET /channels/:channel_id/messages
+// List messages godoc
+// @Summary List messages
+// @Tags    messages
+// @Produce json
+// @Param   channel_id path string true "Channel ID (UUID)"
+// @Param   limit      query int    false "limit (default 100)"
+// @Param   offset     query int    false "offset (default 0)"
+// @Success 200 {array} MsgOut
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Router  /channels/{channel_id}/messages [get]
 func (h *MessagesHandler) List(c *gin.Context) {
 	chIDStr := c.Param("channel_id")
 	if chIDStr == "" {

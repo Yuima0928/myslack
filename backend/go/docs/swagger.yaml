@@ -1,0 +1,472 @@
+basePath: /
+definitions:
+  handlers.AddMemberIn:
+    properties:
+      role:
+        description: 役割（未指定は member）
+        enum:
+        - owner
+        - member
+        example: member
+        type: string
+      user_id:
+        description: 追加するユーザのUUID
+        example: 6d4c2f52-1f1c-4e7d-92a2-4b2d4a3d9a10
+        type: string
+    required:
+    - user_id
+    type: object
+  handlers.CreateChannelIn:
+    properties:
+      is_private:
+        description: プライベートかどうか
+        example: false
+        type: boolean
+      name:
+        description: チャンネル名
+        example: general
+        type: string
+    required:
+    - name
+    type: object
+  handlers.CreateWorkspaceIn:
+    properties:
+      name:
+        description: ワークスペース名
+        example: my-team
+        type: string
+    required:
+    - name
+    type: object
+  handlers.MsgCreateIn:
+    properties:
+      text:
+        minLength: 1
+        type: string
+    required:
+    - text
+    type: object
+  handlers.MsgOut:
+    properties:
+      channel_id:
+        type: string
+      id:
+        type: string
+      text:
+        type: string
+      user_id:
+        type: string
+      workspace_id:
+        type: string
+    type: object
+  handlers.SignUpIn:
+    properties:
+      display_name:
+        type: string
+      email:
+        type: string
+      password:
+        minLength: 4
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  handlers.TokenOut:
+    properties:
+      access_token:
+        type: string
+      token_type:
+        type: string
+    type: object
+  handlers.WorkspaceMemberRow:
+    properties:
+      display_name:
+        example: Alice
+        type: string
+      email:
+        example: alice@example.com
+        type: string
+      role:
+        example: owner
+        type: string
+      user_id:
+        example: 6d4c2f52-1f1c-4e7d-92a2-4b2d4a3d9a10
+        type: string
+    type: object
+  model.Workspace:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Minimal Slack-like backend with Gin + GORM + WS
+  title: MySlack API (Go)
+  version: "0.1"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: login
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.SignUpIn'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.TokenOut'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Login
+      tags:
+      - auth
+  /auth/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - Bearer: []
+      summary: Me
+      tags:
+      - auth
+  /auth/signup:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: sign up
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.SignUpIn'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.TokenOut'
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Sign up
+      tags:
+      - auth
+  /channels/{channel_id}/members:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Channel ID (UUID)
+        in: path
+        name: channel_id
+        required: true
+        type: string
+      - description: member payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.AddMemberIn'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'ok: true'
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - Bearer: []
+      summary: Add member to channel
+      tags:
+      - channels
+  /channels/{channel_id}/messages:
+    get:
+      parameters:
+      - description: Channel ID (UUID)
+        in: path
+        name: channel_id
+        required: true
+        type: string
+      - description: limit (default 100)
+        in: query
+        name: limit
+        type: integer
+      - description: offset (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.MsgOut'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List messages
+      tags:
+      - messages
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Channel ID (UUID)
+        in: path
+        name: channel_id
+        required: true
+        type: string
+      - description: message payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.MsgCreateIn'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.MsgOut'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - Bearer: []
+      summary: Create message
+      tags:
+      - messages
+  /health:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+      summary: Health check
+      tags:
+      - health
+  /workspaces:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Workspace'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - Bearer: []
+      summary: List my workspaces
+      tags:
+      - workspaces
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: workspace payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateWorkspaceIn'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'id: UUID string'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - Bearer: []
+      summary: Create workspace
+      tags:
+      - workspaces
+  /workspaces/{ws_id}/channels:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID (UUID)
+        in: path
+        name: ws_id
+        required: true
+        type: string
+      - description: channel payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateChannelIn'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'id: UUID string'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - Bearer: []
+      summary: Create channel
+      tags:
+      - channels
+  /workspaces/{ws_id}/members:
+    get:
+      parameters:
+      - description: Workspace ID (UUID)
+        in: path
+        name: ws_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.WorkspaceMemberRow'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - Bearer: []
+      summary: List workspace members
+      tags:
+      - workspaces
+securityDefinitions:
+  Bearer:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

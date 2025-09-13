@@ -7,7 +7,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
-	"slackgo/internal/jwt"
+	jwtutil "slackgo/internal/jwt"
 	"slackgo/internal/model"
 )
 
@@ -30,6 +30,15 @@ type TokenOut struct {
 	TokenType   string `json:"token_type"`
 }
 
+// SignUp godoc
+// @Summary Sign up
+// @Tags    auth
+// @Accept  json
+// @Produce json
+// @Param   body body SignUpIn true "sign up"
+// @Success 200 {object} TokenOut
+// @Failure 409 {object} map[string]string
+// @Router  /auth/signup [post]
 func (h *AuthHandler) SignUp(c *gin.Context) {
 	var in SignUpIn
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -54,6 +63,15 @@ func (h *AuthHandler) SignUp(c *gin.Context) {
 	c.JSON(http.StatusOK, TokenOut{AccessToken: t, TokenType: "bearer"})
 }
 
+// Login godoc
+// @Summary Login
+// @Tags    auth
+// @Accept  json
+// @Produce json
+// @Param   body body SignUpIn true "login"
+// @Success 200 {object} TokenOut
+// @Failure 401 {object} map[string]string
+// @Router  /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var in SignUpIn
 	if err := c.ShouldBindJSON(&in); err != nil {
@@ -73,6 +91,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, TokenOut{AccessToken: t, TokenType: "bearer"})
 }
 
+// Me godoc
+// @Summary Me
+// @Tags    auth
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Security Bearer
+// @Router  /auth/me [get]
 func (h *AuthHandler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": c.GetString("user_id")})
 }

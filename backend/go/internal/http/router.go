@@ -10,6 +10,9 @@ import (
 	"slackgo/internal/http/handlers"
 	"slackgo/internal/http/middleware"
 	"slackgo/internal/ws"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func NewRouter(
@@ -75,6 +78,12 @@ func NewRouter(
 			}
 		}()
 	})
+
+	// Swagger UI
+	r.GET("/docs/*any", ginSwagger.WrapHandler(
+		swaggerFiles.Handler,
+		ginSwagger.URL("/docs/doc.json"), // ← UI が読む JSON の絶対パスを指定
+	))
 
 	return r
 }
