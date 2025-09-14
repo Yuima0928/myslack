@@ -51,6 +51,7 @@ func RequireWorkspaceOwner(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// 今は使っていない
 func RequireChannelMember(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetString("user_id")

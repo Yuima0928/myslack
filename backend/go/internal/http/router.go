@@ -54,9 +54,8 @@ func NewRouter(
 
 	// Messages（メンバーのみ）
 	msgs := api.Group("/channels/:channel_id/messages")
-	msgs.Use(middleware.RequireChannelMember(db))
-	msgs.POST("", msg.Create)
-	msgs.GET("", msg.List)
+	msgs.GET("", middleware.RequireChannelReadable(db), msg.List)
+	msgs.POST("", middleware.RequireChannelWritable(db), msg.Create)
 
 	// WebSocket（そのまま）
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
