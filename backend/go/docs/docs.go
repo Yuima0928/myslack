@@ -203,13 +203,18 @@ const docTemplate = `{
         },
         "/channels/{channel_id}/messages": {
             "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "messages"
                 ],
-                "summary": "List messages",
+                "summary": "List messages (channel timeline or thread replies)",
                 "parameters": [
                     {
                         "type": "string",
@@ -219,14 +224,26 @@ const docTemplate = `{
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "If set, returns replies under the thread root",
+                        "name": "thread_root_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "If true, returns only top-level messages",
+                        "name": "root_only",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
-                        "description": "limit (default 100)",
+                        "description": "limit",
                         "name": "limit",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "description": "offset (default 0)",
+                        "description": "offset",
                         "name": "offset",
                         "in": "query"
                     }
@@ -243,15 +260,6 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -276,7 +284,7 @@ const docTemplate = `{
                 "tags": [
                     "messages"
                 ],
-                "summary": "Create message",
+                "summary": "Create message (supports thread replies)",
                 "parameters": [
                     {
                         "type": "string",
@@ -286,7 +294,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "message payload",
+                        "description": "message",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -634,6 +642,10 @@ const docTemplate = `{
                 "text"
             ],
             "properties": {
+                "parent_id": {
+                    "description": "追加: 返信先（UUID文字列）",
+                    "type": "string"
+                },
                 "text": {
                     "type": "string",
                     "minLength": 1
@@ -649,7 +661,13 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "parent_id": {
+                    "type": "string"
+                },
                 "text": {
+                    "type": "string"
+                },
+                "thread_root_id": {
                     "type": "string"
                 },
                 "user_id": {

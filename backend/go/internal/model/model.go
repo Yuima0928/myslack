@@ -43,8 +43,14 @@ type Message struct {
 	UserID      *uuid.UUID `gorm:"type:uuid"`
 	User        *User      `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
 	Text        *string
-	CreatedAt   time.Time
-	EditedAt    *time.Time
+	// 追加: スレッド
+	ParentID     *uuid.UUID `gorm:"type:uuid;index"` // 直近の親（返信先）
+	ThreadRootID *uuid.UUID `gorm:"type:uuid;index"` // スレッドの根（最初のメッセージ）
+	// FKは同一テーブルを参照
+	Parent     *Message `gorm:"foreignKey:ParentID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
+	ThreadRoot *Message `gorm:"foreignKey:ThreadRootID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
+	CreatedAt  time.Time
+	EditedAt   *time.Time
 }
 
 type WorkspaceMember struct {

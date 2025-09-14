@@ -40,6 +40,9 @@ definitions:
     type: object
   handlers.MsgCreateIn:
     properties:
+      parent_id:
+        description: '追加: 返信先（UUID文字列）'
+        type: string
       text:
         minLength: 1
         type: string
@@ -52,7 +55,11 @@ definitions:
         type: string
       id:
         type: string
+      parent_id:
+        type: string
       text:
+        type: string
+      thread_root_id:
         type: string
       user_id:
         type: string
@@ -235,11 +242,19 @@ paths:
         name: channel_id
         required: true
         type: string
-      - description: limit (default 100)
+      - description: If set, returns replies under the thread root
+        in: query
+        name: thread_root_id
+        type: string
+      - description: If true, returns only top-level messages
+        in: query
+        name: root_only
+        type: boolean
+      - description: limit
         in: query
         name: limit
         type: integer
-      - description: offset (default 0)
+      - description: offset
         in: query
         name: offset
         type: integer
@@ -258,13 +273,9 @@ paths:
             additionalProperties:
               type: string
             type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: List messages
+      security:
+      - Bearer: []
+      summary: List messages (channel timeline or thread replies)
       tags:
       - messages
     post:
@@ -276,7 +287,7 @@ paths:
         name: channel_id
         required: true
         type: string
-      - description: message payload
+      - description: message
         in: body
         name: body
         required: true
@@ -309,7 +320,7 @@ paths:
             type: object
       security:
       - Bearer: []
-      summary: Create message
+      summary: Create message (supports thread replies)
       tags:
       - messages
   /health:
