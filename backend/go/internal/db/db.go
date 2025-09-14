@@ -15,11 +15,5 @@ func Open(dsn string) (*gorm.DB, error) {
 	if err := model.EnableExtensions(gdb); err != nil {
 		return nil, err
 	}
-	if err := gdb.AutoMigrate(
-		&model.User{}, &model.Workspace{}, &model.Channel{}, &model.Message{},
-		&model.WorkspaceMember{}, &model.ChannelMember{},
-	); err != nil {
-		return nil, err
-	}
 	return gdb, nil
 }

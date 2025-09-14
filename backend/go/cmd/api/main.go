@@ -30,6 +30,14 @@ func main() {
 		log.Fatal(err)
 	}
 
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := db.RunMigrations(sqlDB); err != nil {
+		log.Fatal(err)
+	}
+
 	jm := jwtutil.New(cfg.JWTSecret, 7*24*time.Hour)
 	hub := ws.NewHub()
 
