@@ -131,4 +131,47 @@ func (h *ChannelsHandler) AddMember(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// ListByWorkspace godoc
+// @Summary  List channels visible in a workspace
+// @Tags     channels
+// @Produce  json
+// @Param    ws_id path string true "Workspace ID (UUID)"
+// @Success  200 {array} map[string]any
+// @Failure  401 {object} map[string]string
+// @Failure  403 {object} map[string]string
+// @Security Bearer
+// @Router   /workspaces/{ws_id}/channels [get]
+func (h *ChannelsHandler) ListByWorkspace(c *gin.Context) {
+	uid := c.GetString("user_id")
+	wsID := c.Param("ws_id")
+	if uid == "" || wsID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"detail": "unauthorized"})
+		return
+	}
+
+	// パブリック or 自分がメンバーのプライベート
+	type row struct {
+		ID        uuid.UUID `json:"id"`
+		Name      string    `json:"name"`
+		IsPrivate bool      `json:"is_private"`
+	}
+	var rows []row
+	if err := h.db.
+		Table("channels c").
+		Select("c.id, c.name, c.is_private").
+		Where("c.workspace_id = ?", wsID).
+		Where(`
+            c.is_private = false
+            OR EXISTS (
+			SELECT 1 FROM channel_members cm
+			WHERE cm.channel_id = c.id AND cm.user_id = ?
+            )`, uid).
+		Order("c.name ASC").
+		Find(&rows).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "list failed"})
+		return
+	}
+	c.JSON(http.StatusOK, rows)
+}
+
 func uuidPtr(v uuid.UUID) *uuid.UUID { return &v }

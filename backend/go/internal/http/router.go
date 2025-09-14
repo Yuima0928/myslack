@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
@@ -26,6 +28,16 @@ func NewRouter(
 ) *gin.Engine {
 	r := gin.Default()
 
+	// ★ CORS
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Authorization", "Content-Type"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+
 	r.GET("/health", handlers.Health)
 
 	// 認証
@@ -46,6 +58,7 @@ func NewRouter(
 	wsGroup.Use(middleware.RequireWorkspaceMember(db))
 	// 作成はowner限定にしたい場合は RequireWorkspaceOwner にする
 	wsGroup.POST("/channels", middleware.RequireWorkspaceOwner(db), ch.Create)
+	wsGroup.GET("/channels", ch.ListByWorkspace)
 
 	// Channel members（owner限定）
 	chGroup := api.Group("/channels/:channel_id")

@@ -394,6 +394,40 @@ paths:
       tags:
       - workspaces
   /workspaces/{ws_id}/channels:
+    get:
+      parameters:
+      - description: Workspace ID (UUID)
+        in: path
+        name: ws_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - Bearer: []
+      summary: List channels visible in a workspace
+      tags:
+      - channels
     post:
       consumes:
       - application/json
