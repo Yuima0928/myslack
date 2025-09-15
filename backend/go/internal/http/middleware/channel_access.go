@@ -64,3 +64,34 @@ func RequireChannelWritable(db *gorm.DB) gin.HandlerFunc {
 	// public 分岐でも channel_members をチェックするように変えてください。
 	return RequireChannelReadable(db)
 }
+
+// チャンネルの親WSメンバーであればOK（owner不要）
+func RequireWorkspaceMemberByChannel(db *gorm.DB) gin.HandlerFunc {
+	type chRow struct {
+		WorkspaceID string
+	}
+	return func(c *gin.Context) {
+		userID := c.GetString("user_id")
+		chID := c.Param("channel_id")
+		if userID == "" || chID == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"detail": "unauthorized"})
+			return
+		}
+
+		var ch chRow
+		if err := db.Raw(`SELECT workspace_id FROM channels WHERE id = ?`, chID).Scan(&ch).Error; err != nil || ch.WorkspaceID == "" {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"detail": "channel not found"})
+			return
+		}
+
+		var ok int
+		if err := db.Raw(`
+			SELECT 1 FROM workspace_members
+			WHERE workspace_id = ? AND user_id = ? LIMIT 1
+		`, ch.WorkspaceID, userID).Scan(&ok).Error; err == nil && ok == 1 {
+			c.Next()
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"detail": "not a workspace member"})
+	}
+}

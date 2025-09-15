@@ -52,18 +52,23 @@ func NewRouter(
 	api.POST("/workspaces", wsH.Create) // 作成者=owner
 	api.GET("/workspaces", wsH.ListMine)
 	api.GET("/workspaces/:ws_id/members", middleware.RequireWorkspaceMember(db), wsH.ListMembers)
+	api.POST("/workspaces/:ws_id/members", middleware.RequireWorkspaceMember(db), wsH.AddMember)
+
+	// 追加: 登録ユーザー検索（認証必須でOK）
+	api.GET("/users/search", wsH.SearchUsers)
 
 	// Channels under workspace
 	wsGroup := api.Group("/workspaces/:ws_id")
 	wsGroup.Use(middleware.RequireWorkspaceMember(db))
 	// 作成はowner限定にしたい場合は RequireWorkspaceOwner にする
-	wsGroup.POST("/channels", middleware.RequireWorkspaceOwner(db), ch.Create)
+	wsGroup.POST("/channels", middleware.RequireWorkspaceMember(db), ch.Create)
 	wsGroup.GET("/channels", ch.ListByWorkspace)
 
 	// Channel members（owner限定）
 	chGroup := api.Group("/channels/:channel_id")
-	chGroup.Use(middleware.RequireChannelOwner(db))
+	chGroup.Use(middleware.RequireWorkspaceMemberByChannel(db))
 	chGroup.POST("/members", ch.AddMember)
+	chGroup.GET("/members/search", ch.SearchWorkspaceMembers)
 
 	// Messages（メンバーのみ）
 	msgs := api.Group("/channels/:channel_id/messages")

@@ -34,7 +34,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.SignUpIn"
+                            "$ref": "#/definitions/internal_http_handlers.SignUpIn"
                         }
                     }
                 ],
@@ -42,7 +42,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.TokenOut"
+                            "$ref": "#/definitions/internal_http_handlers.TokenOut"
                         }
                     },
                     "401": {
@@ -103,7 +103,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.SignUpIn"
+                            "$ref": "#/definitions/internal_http_handlers.SignUpIn"
                         }
                     }
                 ],
@@ -111,7 +111,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.TokenOut"
+                            "$ref": "#/definitions/internal_http_handlers.TokenOut"
                         }
                     },
                     "409": {
@@ -126,15 +126,12 @@ const docTemplate = `{
                 }
             }
         },
-        "/channels/{channel_id}/members": {
-            "post": {
+        "/channels/{channel_id}/members/search": {
+            "get": {
                 "security": [
                     {
                         "Bearer": []
                     }
-                ],
-                "consumes": [
-                    "application/json"
                 ],
                 "produces": [
                     "application/json"
@@ -142,7 +139,7 @@ const docTemplate = `{
                 "tags": [
                     "channels"
                 ],
-                "summary": "Add member to channel",
+                "summary": "Search members of the workspace which the channel belongs to (exclude current channel members)",
                 "parameters": [
                     {
                         "type": "string",
@@ -152,22 +149,26 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "member payload",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handlers.AddMemberIn"
-                        }
+                        "type": "string",
+                        "description": "query string (part of email or display_name)",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "limit (max 50, default 20)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "ok: true",
+                        "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "boolean"
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/internal_http_handlers.MemberCandidateRow"
                             }
                         }
                     },
@@ -189,8 +190,8 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "422": {
-                        "description": "Unprocessable Entity",
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -254,7 +255,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.MsgOut"
+                                "$ref": "#/definitions/internal_http_handlers.MsgOut"
                             }
                         }
                     },
@@ -299,7 +300,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.MsgCreateIn"
+                            "$ref": "#/definitions/internal_http_handlers.MsgCreateIn"
                         }
                     }
                 ],
@@ -307,7 +308,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.MsgOut"
+                            "$ref": "#/definitions/internal_http_handlers.MsgOut"
                         }
                     },
                     "400": {
@@ -359,6 +360,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/search": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Search registered users (email/display_name contains q)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "query string (part of email or display_name)",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "limit (max 50, default 20)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/internal_http_handlers.UserRow"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/workspaces": {
             "get": {
                 "security": [
@@ -379,7 +431,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/model.Workspace"
+                                "$ref": "#/definitions/slackgo_internal_model.Workspace"
                             }
                         }
                     },
@@ -417,7 +469,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.CreateWorkspaceIn"
+                            "$ref": "#/definitions/internal_http_handlers.CreateWorkspaceIn"
                         }
                     }
                 ],
@@ -536,7 +588,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.CreateChannelIn"
+                            "$ref": "#/definitions/internal_http_handlers.CreateChannelIn"
                         }
                     }
                 ],
@@ -609,7 +661,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.WorkspaceMemberRow"
+                                "$ref": "#/definitions/internal_http_handlers.WorkspaceMemberRow"
                             }
                         }
                     },
@@ -632,11 +684,93 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workspaces"
+                ],
+                "summary": "Add member to workspace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID (UUID)",
+                        "name": "ws_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "member payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_http_handlers.AddWorkspaceMemberIn"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok: true",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         }
     },
     "definitions": {
-        "handlers.AddMemberIn": {
+        "internal_http_handlers.AddWorkspaceMemberIn": {
             "type": "object",
             "required": [
                 "user_id"
@@ -658,7 +792,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.CreateChannelIn": {
+        "internal_http_handlers.CreateChannelIn": {
             "type": "object",
             "required": [
                 "name"
@@ -676,7 +810,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.CreateWorkspaceIn": {
+        "internal_http_handlers.CreateWorkspaceIn": {
             "type": "object",
             "required": [
                 "name"
@@ -689,7 +823,21 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.MsgCreateIn": {
+        "internal_http_handlers.MemberCandidateRow": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_http_handlers.MsgCreateIn": {
             "type": "object",
             "required": [
                 "text"
@@ -705,7 +853,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.MsgOut": {
+        "internal_http_handlers.MsgOut": {
             "type": "object",
             "properties": {
                 "channel_id": {
@@ -731,7 +879,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.SignUpIn": {
+        "internal_http_handlers.SignUpIn": {
             "type": "object",
             "required": [
                 "email",
@@ -750,7 +898,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.TokenOut": {
+        "internal_http_handlers.TokenOut": {
             "type": "object",
             "properties": {
                 "access_token": {
@@ -761,7 +909,21 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.WorkspaceMemberRow": {
+        "internal_http_handlers.UserRow": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_http_handlers.WorkspaceMemberRow": {
             "type": "object",
             "properties": {
                 "display_name": {
@@ -782,10 +944,10 @@ const docTemplate = `{
                 }
             }
         },
-        "model.Workspace": {
+        "slackgo_internal_model.Workspace": {
             "type": "object",
             "properties": {
-                "createdAt": {
+                "created_at": {
                     "type": "string"
                 },
                 "id": {

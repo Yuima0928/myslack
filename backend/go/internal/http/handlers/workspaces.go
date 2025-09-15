@@ -2,11 +2,14 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"slackgo/internal/model"
 )
@@ -129,4 +132,148 @@ func (h *WorkspacesHandler) ListMembers(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, rows)
+}
+
+type AddWorkspaceMemberIn struct {
+	// 追加するユーザのUUID
+	UserID string `json:"user_id" binding:"required,uuid" example:"6d4c2f52-1f1c-4e7d-92a2-4b2d4a3d9a10"`
+	// 役割（未指定は member）
+	Role string `json:"role" binding:"omitempty,oneof=owner member" example:"member"`
+}
+
+// AddMember godoc
+// @Summary  Add member to workspace
+// @Tags     workspaces
+// @Accept   json
+// @Produce  json
+// @Param    ws_id path string true "Workspace ID (UUID)"
+// @Param    body  body  AddWorkspaceMemberIn true "member payload"
+// @Success  200 {object} map[string]bool "ok: true"
+// @Failure  400 {object} map[string]string
+// @Failure  401 {object} map[string]string
+// @Failure  404 {object} map[string]string
+// @Failure  422 {object} map[string]string
+// @Security Bearer
+// @Router   /workspaces/{ws_id}/members [post]
+func (h *WorkspacesHandler) AddMember(c *gin.Context) {
+	wsID := c.Param("ws_id")
+	if wsID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "ws_id required"})
+		return
+	}
+	var in AddWorkspaceMemberIn
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": err.Error()})
+		return
+	}
+	role := in.Role
+	if role == "" {
+		role = "member"
+	}
+
+	wsUUID, err := uuid.Parse(wsID)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": "invalid ws_id"})
+		return
+	}
+	uuidTarget, err := uuid.Parse(in.UserID)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": "invalid user_id"})
+		return
+	}
+
+	// ワークスペース存在チェック
+	var exists int
+	if err := h.db.Raw(`SELECT 1 FROM workspaces WHERE id = ? LIMIT 1`, wsUUID).Scan(&exists).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "lookup workspace failed"})
+		return
+	}
+	if exists != 1 {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "workspace not found"})
+		return
+	}
+
+	// 対象ユーザが存在するか
+	exists = 0
+	if err := h.db.Raw(`SELECT 1 FROM users WHERE id = ? LIMIT 1`, uuidTarget).Scan(&exists).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "lookup user failed"})
+		return
+	}
+	if exists != 1 {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "user not found"})
+		return
+	}
+
+	// workspace_members に登録（重複なら何もしない）
+	rec := model.WorkspaceMember{
+		UserID:      uuidTarget,
+		WorkspaceID: wsUUID,
+		Role:        role,
+	}
+	if err := h.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&rec).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "add member failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// --- 追加: 登録ユーザー検索（email / display_name 部分一致） ---
+
+type UserRow struct {
+	ID          uuid.UUID `json:"id"`
+	Email       string    `json:"email"`
+	DisplayName *string   `json:"display_name,omitempty"`
+}
+
+// SearchUsers godoc
+// @Summary  Search registered users (email/display_name contains q)
+// @Tags     users
+// @Produce  json
+// @Param    q     query string true  "query string (part of email or display_name)"
+// @Param    limit query int    false "limit (max 50, default 20)"
+// @Success  200 {array}  handlers.UserRow
+// @Failure  400 {object} map[string]string
+// @Security Bearer
+// @Router   /users/search [get]
+func (h *WorkspacesHandler) SearchUsers(c *gin.Context) {
+	q := strings.TrimSpace(c.Query("q"))
+	if q == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "q required"})
+		return
+	}
+	limit := 20
+	if v := c.Query("limit"); v != "" {
+		if n, err := parsePositiveInt(v, 1, 50); err == nil {
+			limit = n
+		}
+	}
+
+	like := "%" + q + "%"
+	rows := []UserRow{}
+	if err := h.db.
+		Table("users").
+		Select("id, email, display_name").
+		Where("email ILIKE ? OR display_name ILIKE ?", like, like).
+		Limit(limit).
+		Find(&rows).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "search failed"})
+		return
+	}
+	c.JSON(http.StatusOK, rows)
+}
+
+// 小ヘルパー
+func parsePositiveInt(s string, min, max int) (int, error) {
+	var n int
+	_, err := fmt.Sscanf(s, "%d", &n)
+	if err != nil {
+		return 0, err
+	}
+	if n < min {
+		n = min
+	}
+	if n > max {
+		n = max
+	}
+	return n, nil
 }

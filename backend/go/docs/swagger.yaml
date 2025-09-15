@@ -1,6 +1,6 @@
 basePath: /
 definitions:
-  handlers.AddMemberIn:
+  internal_http_handlers.AddWorkspaceMemberIn:
     properties:
       role:
         description: 役割（未指定は member）
@@ -16,7 +16,7 @@ definitions:
     required:
     - user_id
     type: object
-  handlers.CreateChannelIn:
+  internal_http_handlers.CreateChannelIn:
     properties:
       is_private:
         description: プライベートかどうか
@@ -29,7 +29,7 @@ definitions:
     required:
     - name
     type: object
-  handlers.CreateWorkspaceIn:
+  internal_http_handlers.CreateWorkspaceIn:
     properties:
       name:
         description: ワークスペース名
@@ -38,7 +38,16 @@ definitions:
     required:
     - name
     type: object
-  handlers.MsgCreateIn:
+  internal_http_handlers.MemberCandidateRow:
+    properties:
+      display_name:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+    type: object
+  internal_http_handlers.MsgCreateIn:
     properties:
       parent_id:
         description: '追加: 返信先（UUID文字列）'
@@ -49,7 +58,7 @@ definitions:
     required:
     - text
     type: object
-  handlers.MsgOut:
+  internal_http_handlers.MsgOut:
     properties:
       channel_id:
         type: string
@@ -66,7 +75,7 @@ definitions:
       workspace_id:
         type: string
     type: object
-  handlers.SignUpIn:
+  internal_http_handlers.SignUpIn:
     properties:
       display_name:
         type: string
@@ -79,14 +88,23 @@ definitions:
     - email
     - password
     type: object
-  handlers.TokenOut:
+  internal_http_handlers.TokenOut:
     properties:
       access_token:
         type: string
       token_type:
         type: string
     type: object
-  handlers.WorkspaceMemberRow:
+  internal_http_handlers.UserRow:
+    properties:
+      display_name:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+    type: object
+  internal_http_handlers.WorkspaceMemberRow:
     properties:
       display_name:
         example: Alice
@@ -101,9 +119,9 @@ definitions:
         example: 6d4c2f52-1f1c-4e7d-92a2-4b2d4a3d9a10
         type: string
     type: object
-  model.Workspace:
+  slackgo_internal_model.Workspace:
     properties:
-      createdAt:
+      created_at:
         type: string
       id:
         type: string
@@ -126,14 +144,14 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/handlers.SignUpIn'
+          $ref: '#/definitions/internal_http_handlers.SignUpIn'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handlers.TokenOut'
+            $ref: '#/definitions/internal_http_handlers.TokenOut'
         "401":
           description: Unauthorized
           schema:
@@ -169,14 +187,14 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/handlers.SignUpIn'
+          $ref: '#/definitions/internal_http_handlers.SignUpIn'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handlers.TokenOut'
+            $ref: '#/definitions/internal_http_handlers.TokenOut'
         "409":
           description: Conflict
           schema:
@@ -186,31 +204,32 @@ paths:
       summary: Sign up
       tags:
       - auth
-  /channels/{channel_id}/members:
-    post:
-      consumes:
-      - application/json
+  /channels/{channel_id}/members/search:
+    get:
       parameters:
       - description: Channel ID (UUID)
         in: path
         name: channel_id
         required: true
         type: string
-      - description: member payload
-        in: body
-        name: body
+      - description: query string (part of email or display_name)
+        in: query
+        name: q
         required: true
-        schema:
-          $ref: '#/definitions/handlers.AddMemberIn'
+        type: string
+      - description: limit (max 50, default 20)
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
         "200":
-          description: 'ok: true'
+          description: OK
           schema:
-            additionalProperties:
-              type: boolean
-            type: object
+            items:
+              $ref: '#/definitions/internal_http_handlers.MemberCandidateRow'
+            type: array
         "400":
           description: Bad Request
           schema:
@@ -223,15 +242,16 @@ paths:
             additionalProperties:
               type: string
             type: object
-        "422":
-          description: Unprocessable Entity
+        "404":
+          description: Not Found
           schema:
             additionalProperties:
               type: string
             type: object
       security:
       - Bearer: []
-      summary: Add member to channel
+      summary: Search members of the workspace which the channel belongs to (exclude
+        current channel members)
       tags:
       - channels
   /channels/{channel_id}/messages:
@@ -265,7 +285,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/handlers.MsgOut'
+              $ref: '#/definitions/internal_http_handlers.MsgOut'
             type: array
         "400":
           description: Bad Request
@@ -292,14 +312,14 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/handlers.MsgCreateIn'
+          $ref: '#/definitions/internal_http_handlers.MsgCreateIn'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handlers.MsgOut'
+            $ref: '#/definitions/internal_http_handlers.MsgOut'
         "400":
           description: Bad Request
           schema:
@@ -335,6 +355,38 @@ paths:
       summary: Health check
       tags:
       - health
+  /users/search:
+    get:
+      parameters:
+      - description: query string (part of email or display_name)
+        in: query
+        name: q
+        required: true
+        type: string
+      - description: limit (max 50, default 20)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_http_handlers.UserRow'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - Bearer: []
+      summary: Search registered users (email/display_name contains q)
+      tags:
+      - users
   /workspaces:
     get:
       produces:
@@ -344,7 +396,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/model.Workspace'
+              $ref: '#/definitions/slackgo_internal_model.Workspace'
             type: array
         "401":
           description: Unauthorized
@@ -366,7 +418,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/handlers.CreateWorkspaceIn'
+          $ref: '#/definitions/internal_http_handlers.CreateWorkspaceIn'
       produces:
       - application/json
       responses:
@@ -442,7 +494,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/handlers.CreateChannelIn'
+          $ref: '#/definitions/internal_http_handlers.CreateChannelIn'
       produces:
       - application/json
       responses:
@@ -490,7 +542,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/handlers.WorkspaceMemberRow'
+              $ref: '#/definitions/internal_http_handlers.WorkspaceMemberRow'
             type: array
         "401":
           description: Unauthorized
@@ -507,6 +559,59 @@ paths:
       security:
       - Bearer: []
       summary: List workspace members
+      tags:
+      - workspaces
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID (UUID)
+        in: path
+        name: ws_id
+        required: true
+        type: string
+      - description: member payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_http_handlers.AddWorkspaceMemberIn'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'ok: true'
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - Bearer: []
+      summary: Add member to workspace
       tags:
       - workspaces
 securityDefinitions:

@@ -91,6 +91,42 @@ export class ApiClient {
       { method: "POST", headers: this.headers(), body: JSON.stringify({ text, parent_id: parentId ?? null }) }
     );
   }
+  
+  // ユーザー検索
+  searchUsers(q: string, limit = 20) {
+    const p = new URLSearchParams({ q, limit: String(limit) });
+    return this.json<Array<{id:string;email:string;display_name?:string}>>(
+      `/users/search?${p}`,
+      { headers: this.headers(false) }   // ← Authorization を付ける（Content-Typeは不要）
+    );
+  }
+
+  // WSにメンバー追加
+  addWorkspaceMember(wsId: string, userId: string, role: 'owner'|'member' = 'member') {
+    return this.json<{ok:boolean}>(`/workspaces/${wsId}/members`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ user_id: userId, role }),
+    });
+  }
+
+  // チャンネル候補検索（WSメンバーから、未参加のみ）
+  searchChannelMemberCandidates(channelId: string, q: string, limit = 20) {
+    const p = new URLSearchParams({ q, limit: String(limit) });
+    return this.json<Array<{id:string;email:string;display_name?:string}>>(
+      `/channels/${channelId}/members/search?${p}`,
+      { headers: this.headers(false) }   // ← ここも同様に付与
+    );
+  }
+
+  // チャンネルにメンバー追加
+  addChannelMember(channelId: string, userId: string, role: 'owner'|'member' = 'member') {
+    return this.json<{ok:boolean}>(`/channels/${channelId}/members`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ user_id: userId, role }),
+    });
+  }
 }
 
 export const api = new ApiClient();
