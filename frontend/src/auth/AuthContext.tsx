@@ -1,65 +1,126 @@
-import React, { createContext, useEffect, useMemo, useState } from 'react';
-import { api } from '../api/client';
-import type { Me } from '../api/types';
+// src/auth/AuthContext.tsx
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type {
+  Auth0Client,
+  RedirectLoginOptions,
+  User,
+} from "@auth0/auth0-spa-js";
+import { auth0Promise } from "./auth0";
+import { setTokenProvider } from "../api/client";
 
-type AuthState = {
-  token: string | null;
-  me: Me | null;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, display?: string) => Promise<void>;
-  logout: () => void;
-  ready: boolean;
+type AuthContextValue = {
+  isLoading: boolean;
+  isAuthenticated: boolean;
+  user?: User | null;
+
+  loginWithRedirect: (opts?: RedirectLoginOptions) => Promise<void>;
 };
 
-export const AuthContext = createContext<AuthState>({
-  token: null, me: null, ready: false,
-  async login(){}, async signup(){}, logout(){},
-});
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+export const useAuth = (): AuthContextValue => {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
+  return ctx;
+};
 
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
-  const [me, setMe] = useState<Me | null>(null);
-  const [ready, setReady] = useState(false);
+  const clientRef = useRef<Auth0Client | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
+  // 初期化：セッション確認 → ユーザー取得 → APIトークン供給 → 初回ブートストラップ
   useEffect(() => {
+    let mounted = true;
+
     (async () => {
       try {
-        if (token) {
-          const profile = await api.me();
-          setMe(profile);
+        const client = await auth0Promise;
+        clientRef.current = client;
+
+        const authed = await client.isAuthenticated();
+        if (!mounted) return;
+        setIsAuthenticated(authed);
+
+        if (!authed) {
+          setUser(null);
+          return;
         }
-      } catch {
-        localStorage.removeItem('token');
-        setToken(null);
-        setMe(null);
+
+        // ユーザー/クレーム取得
+        const [u, claims] = await Promise.all([
+          client.getUser(),
+          client.getIdTokenClaims(),
+        ]);
+        if (!mounted) return;
+        setUser(u ?? null);
+
+        // API クライアントへアクセストークン供給
+        setTokenProvider(() => client.getTokenSilently());
+
+        // 初回だけ /auth/bootstrap にメール/表示名を送る（sub 単位で一度）
+        const sub =
+          (claims?.sub as string | undefined) || (u as any)?.sub || null;
+        if (sub) {
+          const key = "bootstrapped_sub";
+          const last = localStorage.getItem(key);
+          if (last !== sub) {
+            try {
+              const at = await client.getTokenSilently();
+              const displayName =
+                u?.name ?? (u as any)?.nickname ?? (u?.email?.split("@")[0] ?? null);
+
+              await fetch("http://localhost:8000/auth/bootstrap", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${at}`,
+                },
+                body: JSON.stringify({
+                  email: u?.email ?? null,
+                  display_name: displayName,
+                }),
+              }).catch(() => { /* no-op */ });
+
+              localStorage.setItem(key, sub);
+            } catch {
+              // 失敗してもアプリ続行
+            }
+          }
+        }
       } finally {
-        setReady(true);
+        if (mounted) setIsLoading(false);
       }
     })();
-  }, [token]);
 
-  const value = useMemo(() => ({
-    token, me, ready,
-    login: async (email: string, password: string) => {
-      const t = await api.login(email, password);
-      localStorage.setItem('token', t.access_token);
-      setToken(t.access_token);
-      const profile = await api.me();
-      setMe(profile);
-    },
-    signup: async (email: string, password: string, display?: string) => {
-      const t = await api.signup(email, password, display);
-      localStorage.setItem('token', t.access_token);
-      setToken(t.access_token);
-      const profile = await api.me();
-      setMe(profile);
-    },
-    logout: () => {
-      localStorage.removeItem('token');
-      setToken(null);
-      setMe(null);
-    },
-  }), [token, me, ready]);
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const value = useMemo<AuthContextValue>(() => {
+    return {
+      isLoading,
+      isAuthenticated,
+      user,
+
+      loginWithRedirect: async (opts) => {
+        const c = clientRef.current ?? (await auth0Promise);
+        await c.loginWithRedirect({
+          appState: { returnTo: location.pathname },
+          ...opts,
+        });
+      },
+    };
+  }, [isLoading, isAuthenticated, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

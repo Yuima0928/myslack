@@ -40,13 +40,11 @@ func NewRouter(
 
 	r.GET("/health", handlers.Health)
 
-	// 認証
-	r.POST("/auth/signup", auth.SignUp)
-	r.POST("/auth/login", auth.Login)
 	r.GET("/auth/me", jwtMw, auth.Me)
 
 	api := r.Group("/")
 	api.Use(jwtMw)
+	api.POST("/auth/bootstrap", auth.Bootstrap)
 
 	// Workspaces
 	api.POST("/workspaces", wsH.Create) // 作成者=owner
