@@ -9,6 +9,22 @@ export type Msg = {
   text: string;
 };
 
+// （任意）サーバが返す File レコードの型
+export type FileRec = {
+  id: string;
+  workspace_id: string;
+  channel_id: string;
+  uploader_id: string;
+  filename: string;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  etag?: string | null;
+  sha256_hex?: string | null;
+  storage_key: string;
+  is_image: boolean;
+  created_at: string;
+};
+
 type Fetcher = (input: RequestInfo, init?: RequestInit) => Promise<Response>;
 
 // ---- Token Provider wiring ----
@@ -43,7 +59,6 @@ async function parseJsonOrText(res: Response) {
 }
 
 async function authedJson<T>(path: string, init: RequestInit = {}) {
-  // JSONボディを送る場合は Content-Type を自動付与
   const headers = new Headers(init.headers || {});
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -54,8 +69,7 @@ async function authedJson<T>(path: string, init: RequestInit = {}) {
   if (!res.ok) {
     const msg =
       typeof body === "object" && body && "error" in body
-        ? 
-          (body as any).error?.message ?? JSON.stringify(body)
+        ? (body as any).error?.message ?? JSON.stringify(body)
         : String(body);
     throw new Error(msg || `HTTP ${res.status}`);
   }
@@ -132,6 +146,43 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ user_id: userId, role }),
     });
+  },
+
+  // ====== ここからファイル系 ======
+  async signUpload(
+    wsId: string,
+    chId: string,
+    p: { filename: string; content_type: string; size_bytes: number }
+  ) {
+    return authedJson<{ upload_url: string; storage_key: string; file_id: string }>(
+      `/workspaces/${wsId}/channels/${chId}/files/sign-upload`,
+      {
+        method: "POST",
+        body: JSON.stringify(p),
+      }
+    );
+  },
+
+  async completeFile(p: {
+    storage_key: string;
+    etag: string;
+    sha256_hex?: string | null;
+    filename: string;
+    content_type: string;
+    size_bytes: number;
+    workspace_id: string;
+    channel_id: string;
+  }) {
+    return authedJson<FileRec>("/files/complete", {
+      method: "POST",
+      body: JSON.stringify(p),
+    });
+  },
+
+  async getFileURL(fileId: string, disposition: "inline" | "attachment" = "attachment") {
+    return authedJson<{ url: string; expires_at: string }>(
+      `/files/${fileId}/url?disposition=${disposition}`
+    );
   },
 };
 

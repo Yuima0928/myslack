@@ -11,6 +11,7 @@ import (
 
 	"slackgo/internal/http/handlers"
 	"slackgo/internal/http/middleware"
+	"slackgo/internal/storage"
 	"slackgo/internal/ws"
 
 	swaggerFiles "github.com/swaggo/files"
@@ -25,6 +26,7 @@ func NewRouter(
 	jwtMw gin.HandlerFunc,
 	hub *ws.Hub,
 	db *gorm.DB,
+	s3deps *storage.S3Deps,
 ) *gin.Engine {
 	r := gin.Default()
 
@@ -45,6 +47,18 @@ func NewRouter(
 	api := r.Group("/")
 	api.Use(jwtMw)
 	api.POST("/auth/bootstrap", auth.Bootstrap)
+
+	filesH := handlers.NewFilesHandler(db, s3deps)
+
+	// 署名発行（書き込み権限必須）
+	api.POST("/workspaces/:ws_id/channels/:channel_id/files/sign-upload",
+		middleware.RequireWorkspaceMember(db), filesH.SignUpload)
+
+	// 完了報告
+	api.POST("/files/complete", filesH.Complete)
+
+	// ダウンロード用URL
+	api.GET("/files/:file_id/url", filesH.GetDownloadURL)
 
 	// Workspaces
 	api.POST("/workspaces", wsH.Create) // 作成者=owner

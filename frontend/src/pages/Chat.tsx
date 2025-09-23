@@ -140,7 +140,7 @@ export default function Chat() {
         </div>
 
         <MessageList channelId={activeCh} />
-        <MessageInput channelId={activeCh} />
+        <MessageInput channelId={activeCh} workspaceId={activeWs} />
       </section>
     </div>
   );

@@ -1,4 +1,5 @@
 version: "3.9"
+
 services:
   postgres:
     image: postgres:16
@@ -16,16 +17,46 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"  # S3互換API
+      - "9001:9001"  # Webコンソール
+    volumes:
+      - ./minio-data:/data
+
   api:
     build:
       context: .
       dockerfile: docker/Dockerfile.go
     environment:
+      # DB / JWT
       DB_URL: postgresql://app:app@postgres:5432/appdb
       JWT_SECRET: devjwtsecret_change_me
+
+      # S3/MinIO 設定（★ここが今回の追加）
+      AWS_REGION: ap-northeast-1
+      S3_ENDPOINT: http://minio:9000        # MinIO の内部名:ポート
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: myslack                     # 使うバケット名（後で作成してね）
+      S3_PREFIX: myslack                     # 任意のキー接頭辞
+      S3_USE_PATH_STYLE: "true"              # MinIO は path-style 推奨
+      S3_URL_EXPIRY_SEC: "60"                # 署名URLの有効期限(秒)
+
+      # （必要ならAuth0の環境変数もここに）
+      # AUTH0_DOMAIN: your-tenant.us.auth0.com
+      # AUTH0_AUDIENCE: https://api.myslack.local
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_started
     ports:
       - "8000:8000"
 
