@@ -8,12 +8,11 @@ import (
 )
 
 type User struct {
-	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Email        *string   `gorm:"uniqueIndex;omitempty"                          json:"email"`
-	PasswordHash string    `gorm:"not null"                                       json:"-"`
-	DisplayName  *string   `json:"display_name,omitempty"`
-	ExternalID   *string   `json:"external_id,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Email       *string   `gorm:"uniqueIndex;omitempty"                          json:"email"`
+	DisplayName *string   `json:"display_name,omitempty"`
+	ExternalID  *string   `json:"external_id,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type Workspace struct {
