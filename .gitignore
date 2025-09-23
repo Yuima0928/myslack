@@ -34,3 +34,6 @@ logs/
 # Generated (proto使うならここをメンテ)
 # internal/rpc/**/*.pb.go
 # internal/rpc/**/*_connect.go
+
+/minio-data/
+/minio-data/
