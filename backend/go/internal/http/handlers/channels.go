@@ -2,11 +2,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -60,17 +62,39 @@ func (h *ChannelsHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// 名前の正規化（前後空白カット）
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": "name must not be empty"})
+		return
+	}
+
 	ch := model.Channel{
 		WorkspaceID: uuid.MustParse(wsID),
-		Name:        in.Name,
+		Name:        name,
 		IsPrivate:   in.IsPrivate,
 		CreatedBy:   uuidPtr(uuid.MustParse(uid)),
 	}
+
 	if err := h.db.Create(&ch).Error; err != nil {
+		// ← 一意制約違反（23505）を 409 で返す
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			// どの制約か見分けたい場合は pgErr.ConstraintName を確認
+			// if pgErr.ConstraintName == "uq_channel_ws_name" { ... }
+			c.JSON(http.StatusConflict, gin.H{
+				"detail": "channel name already exists in this workspace",
+				"code":   "channel_name_conflict",
+			})
+			return
+		}
+
+		// その他のDBエラーは 500
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "create channel failed"})
 		return
 	}
-	// 作成者=ownerとして channel_members へ
+
+	// 作成者=ownerとして channel_members へ（失敗しても致命ではないのでログだけでもOK）
 	cm := model.ChannelMember{
 		UserID:    uuid.MustParse(uid),
 		ChannelID: ch.ID,
