@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"slackgo/internal/http/handlers"
 	"slackgo/internal/http/middleware"
 	jwtutil "slackgo/internal/jwt"
+	"slackgo/internal/storage"
 	"slackgo/internal/ws"
 )
 
@@ -38,6 +40,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// ★ ここで S3 依存を初期化（MinIO でも AWS でも OK）
+	s3deps, err := storage.NewS3Deps(context.Background(), cfg)
+	if err != nil {
+		log.Fatalf("init s3 deps failed: %v", err)
+	}
+	if s3deps.Bucket == "" {
+		log.Fatal("S3_BUCKET が未設定です")
+	}
+
 	jm := jwtutil.New(cfg.JWTSecret, 7*24*time.Hour)
 	hub := ws.NewHub()
 
@@ -56,7 +67,7 @@ func main() {
 	router := httpapi.NewRouter(auth, msg, ch, wsh, middleware.JWTAuth0(gdb, middleware.Auth0Config{
 		Domain:   domain,
 		Audience: aud,
-	}), hub, gdb)
+	}), hub, gdb, s3deps)
 
 	log.Printf("listening on %s", cfg.BindAddr)
 	if err := router.Run(cfg.BindAddr); err != nil {
