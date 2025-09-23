@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"os"
-	"time"
 
 	_ "slackgo/docs"
 	"slackgo/internal/config"
@@ -12,7 +11,6 @@ import (
 	httpapi "slackgo/internal/http"
 	"slackgo/internal/http/handlers"
 	"slackgo/internal/http/middleware"
-	jwtutil "slackgo/internal/jwt"
 	"slackgo/internal/storage"
 	"slackgo/internal/ws"
 )
@@ -49,10 +47,9 @@ func main() {
 		log.Fatal("S3_BUCKET が未設定です")
 	}
 
-	jm := jwtutil.New(cfg.JWTSecret, 7*24*time.Hour)
 	hub := ws.NewHub()
 
-	auth := handlers.NewAuthHandler(gdb, jm)
+	auth := handlers.NewAuthHandler(gdb)
 	msg := handlers.NewMessagesHandler(gdb, hub)
 
 	ch := handlers.NewChannelsHandler(gdb)

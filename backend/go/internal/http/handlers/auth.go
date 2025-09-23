@@ -7,17 +7,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	jwtutil "slackgo/internal/jwt"
 	"slackgo/internal/model"
 )
 
 type AuthHandler struct {
-	db  *gorm.DB
-	jwt *jwtutil.Maker
+	db *gorm.DB
 }
 
-func NewAuthHandler(db *gorm.DB, jm *jwtutil.Maker) *AuthHandler {
-	return &AuthHandler{db: db, jwt: jm}
+func NewAuthHandler(db *gorm.DB) *AuthHandler {
+	return &AuthHandler{db: db}
 }
 
 // Me godoc
