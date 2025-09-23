@@ -9,9 +9,11 @@ import (
 )
 
 type Config struct {
-	DBURL     string
-	JWTSecret string
-	BindAddr  string
+	DBURL         string
+	JWTSecret     string
+	BindAddr      string
+	Auth0Domain   string
+	Auth0Audience string
 
 	// S3/MinIO 共通
 	AWSRegion      string
@@ -29,9 +31,11 @@ type Config struct {
 
 func Load() Config {
 	c := Config{
-		DBURL:     env("DB_URL", "postgresql://app:app@localhost:5432/appdb"),
-		JWTSecret: env("JWT_SECRET", "devjwtsecret_change_me"),
-		BindAddr:  env("BIND_ADDR", ":8000"),
+		DBURL:         env("DB_URL", "postgresql://app:app@localhost:5432/appdb"),
+		JWTSecret:     env("JWT_SECRET", "devjwtsecret_change_me"),
+		BindAddr:      env("BIND_ADDR", ":8000"),
+		Auth0Domain:   env("AUTH0_DOMAIN", ""),
+		Auth0Audience: env("AUTH0_AUDIENCE", ""),
 
 		AWSRegion:      env("AWS_REGION", "ap-northeast-1"),
 		S3Bucket:       mustEnv("S3_BUCKET"), // 必須にしたいなら mustEnv。任意なら env(...,"")
