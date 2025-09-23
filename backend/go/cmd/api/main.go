@@ -48,19 +48,11 @@ func main() {
 	}
 
 	hub := ws.NewHub()
-
 	auth := handlers.NewAuthHandler(gdb)
 	msg := handlers.NewMessagesHandler(gdb, hub)
-
 	ch := handlers.NewChannelsHandler(gdb)
 	wsh := handlers.NewWorkspacesHandler(gdb)
-
-	domain := cfg.Auth0Domain
-	aud := cfg.Auth0Audience
-	if domain == "" || aud == "" {
-		log.Fatal("AUTH0_DOMAIN / AUTH0_AUDIENCE が未設定です")
-	}
-	jwtMw := middleware.JWTAuth0(gdb, middleware.Auth0Config{Domain: domain, Audience: aud})
+	jwtMw := middleware.JWTAuth0(gdb, middleware.Auth0Config{Domain: cfg.Auth0Domain, Audience: cfg.Auth0Audience})
 
 	router := httpapi.NewRouter(auth, msg, ch, wsh, jwtMw, hub, gdb, s3deps)
 
