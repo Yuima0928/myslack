@@ -55,16 +55,14 @@ func main() {
 	ch := handlers.NewChannelsHandler(gdb)
 	wsh := handlers.NewWorkspacesHandler(gdb)
 
-	domain := "myslack-yuima.us.auth0.com"
-	aud := "https://api.myslack.local"
+	domain := cfg.Auth0Domain
+	aud := cfg.Auth0Audience
 	if domain == "" || aud == "" {
 		log.Fatal("AUTH0_DOMAIN / AUTH0_AUDIENCE が未設定です")
 	}
+	jwtMw := middleware.JWTAuth0(gdb, middleware.Auth0Config{Domain: domain, Audience: aud})
 
-	router := httpapi.NewRouter(auth, msg, ch, wsh, middleware.JWTAuth0(gdb, middleware.Auth0Config{
-		Domain:   domain,
-		Audience: aud,
-	}), hub, gdb, s3deps)
+	router := httpapi.NewRouter(auth, msg, ch, wsh, jwtMw, hub, gdb, s3deps)
 
 	log.Printf("listening on %s", cfg.BindAddr)
 	if err := router.Run(cfg.BindAddr); err != nil {
