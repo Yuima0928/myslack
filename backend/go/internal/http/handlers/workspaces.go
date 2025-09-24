@@ -182,28 +182,6 @@ func (h *WorkspacesHandler) AddMember(c *gin.Context) {
 		return
 	}
 
-	// ワークスペース存在チェック
-	var exists int
-	if err := h.db.Raw(`SELECT 1 FROM workspaces WHERE id = ? LIMIT 1`, wsUUID).Scan(&exists).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "lookup workspace failed"})
-		return
-	}
-	if exists != 1 {
-		c.JSON(http.StatusNotFound, gin.H{"detail": "workspace not found"})
-		return
-	}
-
-	// 対象ユーザが存在するか
-	exists = 0
-	if err := h.db.Raw(`SELECT 1 FROM users WHERE id = ? LIMIT 1`, uuidTarget).Scan(&exists).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "lookup user failed"})
-		return
-	}
-	if exists != 1 {
-		c.JSON(http.StatusNotFound, gin.H{"detail": "user not found"})
-		return
-	}
-
 	// workspace_members に登録（重複なら何もしない）
 	rec := model.WorkspaceMember{
 		UserID:      uuidTarget,

@@ -1,9 +1,9 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
-	"time"
 
 	_ "slackgo/docs"
 	"slackgo/internal/config"
@@ -11,7 +11,7 @@ import (
 	httpapi "slackgo/internal/http"
 	"slackgo/internal/http/handlers"
 	"slackgo/internal/http/middleware"
-	jwtutil "slackgo/internal/jwt"
+	"slackgo/internal/storage"
 	"slackgo/internal/ws"
 )
 
@@ -38,15 +38,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	jm := jwtutil.New(cfg.JWTSecret, 7*24*time.Hour)
+	// ★ ここで S3 依存を初期化（MinIO でも AWS でも OK）
+	s3deps, err := storage.NewS3Deps(context.Background(), cfg)
+	if err != nil {
+		log.Fatalf("init s3 deps failed: %v", err)
+	}
+	if s3deps.Bucket == "" {
+		log.Fatal("S3_BUCKET が未設定です")
+	}
+
 	hub := ws.NewHub()
-
-	auth := handlers.NewAuthHandler(gdb, jm)
+	auth := handlers.NewAuthHandler(gdb)
 	msg := handlers.NewMessagesHandler(gdb, hub)
-
 	ch := handlers.NewChannelsHandler(gdb)
 	wsh := handlers.NewWorkspacesHandler(gdb)
-	router := httpapi.NewRouter(auth, msg, ch, wsh, middleware.JWT(jm), hub, gdb)
+	jwtMw := middleware.JWTAuth0(gdb, middleware.Auth0Config{Domain: cfg.Auth0Domain, Audience: cfg.Auth0Audience})
+
+	router := httpapi.NewRouter(auth, msg, ch, wsh, jwtMw, hub, gdb, s3deps)
 
 	log.Printf("listening on %s", cfg.BindAddr)
 	if err := router.Run(cfg.BindAddr); err != nil {

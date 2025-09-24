@@ -2,11 +2,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -60,17 +62,39 @@ func (h *ChannelsHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// 名前の正規化（前後空白カット）
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": "name must not be empty"})
+		return
+	}
+
 	ch := model.Channel{
 		WorkspaceID: uuid.MustParse(wsID),
-		Name:        in.Name,
+		Name:        name,
 		IsPrivate:   in.IsPrivate,
 		CreatedBy:   uuidPtr(uuid.MustParse(uid)),
 	}
+
 	if err := h.db.Create(&ch).Error; err != nil {
+		// ← 一意制約違反（23505）を 409 で返す
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			// どの制約か見分けたい場合は pgErr.ConstraintName を確認
+			// if pgErr.ConstraintName == "uq_channel_ws_name" { ... }
+			c.JSON(http.StatusConflict, gin.H{
+				"detail": "channel name already exists in this workspace",
+				"code":   "channel_name_conflict",
+			})
+			return
+		}
+
+		// その他のDBエラーは 500
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "create channel failed"})
 		return
 	}
-	// 作成者=ownerとして channel_members へ
+
+	// 作成者=ownerとして channel_members へ（失敗しても致命ではないのでログだけでもOK）
 	cm := model.ChannelMember{
 		UserID:    uuid.MustParse(uid),
 		ChannelID: ch.ID,
@@ -186,38 +210,6 @@ func (h *ChannelsHandler) AddMember(c *gin.Context) {
 		role = "member"
 	}
 
-	// チャンネルのWS取得
-	var wsIDStr string
-	if err := h.db.
-		Table("channels").
-		Select("workspace_id").
-		Where("id = ?", chID).
-		Limit(1).
-		Row().
-		Scan(&wsIDStr); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "lookup channel failed"})
-		return
-	}
-	wsID, err := uuid.Parse(wsIDStr)
-	if err != nil || wsID == uuid.Nil {
-		c.JSON(http.StatusNotFound, gin.H{"detail": "channel not found"})
-		return
-	}
-
-	// 対象ユーザーがWSメンバーであることを検証
-	var ok int
-	if err := h.db.Raw(`
-		SELECT 1 FROM workspace_members
-		WHERE workspace_id = ? AND user_id = ? LIMIT 1
-	`, wsID, in.UserID).Scan(&ok).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "lookup membership failed"})
-		return
-	}
-	if ok != 1 {
-		c.JSON(http.StatusForbidden, gin.H{"detail": "user is not a workspace member"})
-		return
-	}
-
 	rec := model.ChannelMember{
 		UserID:    uuid.MustParse(in.UserID),
 		ChannelID: uuid.MustParse(chID),
@@ -225,6 +217,51 @@ func (h *ChannelsHandler) AddMember(c *gin.Context) {
 	}
 	if err := h.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&rec).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "add member failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *ChannelsHandler) JoinSelf(c *gin.Context) {
+	uid := c.GetString("user_id")
+	wsID := c.Param("ws_id")
+	chID := c.Param("channel_id")
+	if uid == "" || wsID == "" || chID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "bad params"})
+		return
+	}
+
+	// チャンネルの存在＆WS一致＆公開かどうか確認
+	var ch struct {
+		ID          uuid.UUID
+		WorkspaceID uuid.UUID
+		IsPrivate   bool
+	}
+	if err := h.db.
+		Table("channels").
+		Select("id, workspace_id, is_private").
+		Where("id = ?", chID).
+		Take(&ch).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "channel not found"})
+		return
+	}
+	if ch.WorkspaceID.String() != wsID {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "forbidden"})
+		return
+	}
+	if ch.IsPrivate {
+		// 自己参加はNG。招待API(オーナー権限)でのみ追加させる
+		c.JSON(http.StatusForbidden, gin.H{"detail": "cannot self-join private channel"})
+		return
+	}
+
+	rec := model.ChannelMember{
+		UserID:    uuid.MustParse(uid),
+		ChannelID: uuid.MustParse(chID),
+		Role:      "member",
+	}
+	if err := h.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&rec).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "join failed"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -271,6 +308,50 @@ func (h *ChannelsHandler) ListByWorkspace(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, rows)
+}
+
+// handlers/channels.go
+func (h *ChannelsHandler) IsMember(c *gin.Context) {
+	uid := c.GetString("user_id")
+	wsID := c.Param("ws_id")
+	chID := c.Param("channel_id")
+	if uid == "" || wsID == "" || chID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "bad params"})
+		return
+	}
+
+	// チャンネルのWS整合性＆公開/非公開
+	var ch struct {
+		WorkspaceID uuid.UUID
+		IsPrivate   bool
+	}
+	if err := h.db.
+		Table("channels").
+		Select("workspace_id, is_private").
+		Where("id = ?", chID).
+		Take(&ch).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "channel not found"})
+		return
+	}
+	if ch.WorkspaceID.String() != wsID {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "forbidden"})
+		return
+	}
+
+	// メンバーかどうか
+	var n int64
+	if err := h.db.
+		Table("channel_members").
+		Where("channel_id = ? AND user_id = ?", chID, uid).
+		Count(&n).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "lookup failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"is_member":  n > 0,
+		"is_private": ch.IsPrivate, // あればUIでの表示条件に使える
+	})
 }
 
 func uuidPtr(v uuid.UUID) *uuid.UUID { return &v }
