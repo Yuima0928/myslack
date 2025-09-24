@@ -102,6 +102,19 @@ export const api = {
     );
   },
 
+  async isChannelMember(wsId: string, channelId: string) {
+    return authedJson<{ is_member: boolean; is_private: boolean }>(
+      `/workspaces/${wsId}/channels/${channelId}/membership`
+    );
+  },
+
+  async joinSelf(wsId: string, channelId: string) {
+    return authedJson<{ ok: boolean }>(
+      `/workspaces/${wsId}/channels/${channelId}/join`,
+      { method: "POST" }
+    );
+  },
+
   async createChannel(wsId: string, name: string, isPrivate = false) {
     return authedJson<{ id: string }>(`/workspaces/${wsId}/channels`, {
       method: "POST",

@@ -16,6 +16,7 @@ export default function Chat() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeWs, setActiveWs] = useState<string | null>(null);
   const [activeCh, setActiveCh] = useState<string | null>(null);
+  const [isMember, setIsMember] = useState<boolean>(false);
 
   // Protected が未認証を /login に飛ばすので、ここではローディングだけ見る
   if (isLoading) return <div style={{ padding: 20 }}>Loading…</div>;
@@ -42,6 +43,22 @@ export default function Chat() {
       if (chs.length > 0) setActiveCh(chs[0].id);
     })();
   }, [isAuthenticated, activeWs]);
+
+  useEffect(() => {
+    (async () => {
+      if (!isAuthenticated || !activeWs || !activeCh) {
+        setIsMember(false);
+        return;
+      }
+      try {
+        const m = await api.isChannelMember(activeWs, activeCh);
+        setIsMember(m.is_member);
+      } catch {
+        setIsMember(false);
+      }
+    })();
+  }, [isAuthenticated, activeWs, activeCh]);
+
 
   const currentWs = useMemo(
     () => workspaces.find(w => w.id === activeWs) || null,
@@ -85,6 +102,19 @@ export default function Chat() {
     if (Number.isNaN(idx) || idx < 0 || idx >= cand.length) { alert("Invalid index"); return; }
     await api.addChannelMember(activeCh, cand[idx].id, "member");
     alert(`Added ${cand[idx].email} to channel`);
+  }
+
+  async function handleJoinSelf() {
+    if (!activeWs || !activeCh) return;
+    try {
+      await api.joinSelf(activeWs, activeCh);  // POST /join
+      setIsMember(true);                        // 参加できたので入力欄を解放
+      // 必要ならチャンネル一覧を更新
+      const chs = await api.listChannels(activeWs);
+      setChannels(chs);
+    } catch (e: any) {
+      alert(`参加に失敗しました: ${e?.message ?? e}`);
+    }
   }
 
   return (
@@ -140,7 +170,16 @@ export default function Chat() {
         </div>
 
         <MessageList channelId={activeCh} />
-        <MessageInput channelId={activeCh} workspaceId={activeWs} />
+        {activeWs && activeCh ? (
+          isMember ? (
+            <MessageInput channelId={activeCh} workspaceId={activeWs} />
+          ) : (
+            <div style={{ padding: 12, borderTop: "1px solid #eee" }}>
+              <p style={{ marginBottom: 8 }}>このチャンネルに参加するとメッセージを投稿できます。</p>
+              <button className="btn" onClick={handleJoinSelf}>チャンネルに参加する</button>
+            </div>
+          )
+        ) : null}
       </section>
     </div>
   );
