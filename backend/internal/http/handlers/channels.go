@@ -1,4 +1,3 @@
-// backend/go/internal/http/handlers/channels.go
 package handlers
 
 import (

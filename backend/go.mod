@@ -6,11 +6,16 @@ toolchain go1.24.3
 
 require (
 	github.com/MicahParks/keyfunc/v3 v3.6.1
+	github.com/aws/aws-sdk-go-v2 v1.32.3
+	github.com/aws/aws-sdk-go-v2/config v1.27.11
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.11
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.66.2
 	github.com/gin-contrib/cors v1.7.5
 	github.com/gin-gonic/gin v1.10.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.1
+	github.com/jackc/pgx/v5 v5.7.5
 	github.com/pressly/goose/v3 v3.25.0
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.1
@@ -22,10 +27,7 @@ require (
 require (
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/MicahParks/jwkset v0.8.0 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.32.3 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.6 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.27.11 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.11 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.1 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.22 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.22 // indirect
@@ -35,7 +37,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.4.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.66.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.20.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.23.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.28.6 // indirect
@@ -67,7 +68,6 @@ require (
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgx/v5 v5.7.5 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
