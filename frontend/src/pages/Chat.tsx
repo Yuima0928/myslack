@@ -46,12 +46,12 @@ export default function Chat() {
 
   useEffect(() => {
     (async () => {
-      if (!isAuthenticated || !activeWs || !activeCh) {
+      if (!isAuthenticated || !activeCh) {
         setIsMember(false);
         return;
       }
       try {
-        const m = await api.isChannelMember(activeWs, activeCh);
+        const m = await api.isChannelMember(activeCh);
         setIsMember(m.is_member);
       } catch {
         setIsMember(false);
