@@ -102,10 +102,14 @@ export const api = {
     );
   },
 
-  async isChannelMember(wsId: string, channelId: string) {
-    return authedJson<{ is_member: boolean; is_private: boolean }>(
-      `/workspaces/${wsId}/channels/${channelId}/membership`
-    );
+  async isChannelMember(channelId: string) {
+      return authedJson<{
+        is_member: boolean;
+        can_read: boolean;
+        can_post: boolean;
+        role: "owner" | "member" | "none";
+        is_private: boolean;
+      }>(`/channels/${channelId}/membership`)
   },
 
   async joinSelf(wsId: string, channelId: string) {

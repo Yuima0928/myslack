@@ -19,8 +19,8 @@ type AuthContextValue = {
   isLoading: boolean;
   isAuthenticated: boolean;
   user?: User | null;
-
   loginWithRedirect: (opts?: RedirectLoginOptions) => Promise<void>;
+  getAccessToken: () => Promise<string>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -37,10 +37,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
-  // 初期化：セッション確認 → ユーザー取得 → APIトークン供給 → 初回ブートストラップ
   useEffect(() => {
     let mounted = true;
-
     (async () => {
       try {
         const client = await auth0Promise;
@@ -55,7 +53,6 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
           return;
         }
 
-        // ユーザー/クレーム取得
         const [u, claims] = await Promise.all([
           client.getUser(),
           client.getIdTokenClaims(),
@@ -63,12 +60,9 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         if (!mounted) return;
         setUser(u ?? null);
 
-        // API クライアントへアクセストークン供給
         setTokenProvider(() => client.getTokenSilently());
 
-        // 初回だけ /auth/bootstrap にメール/表示名を送る（sub 単位で一度）
-        const sub =
-          (claims?.sub as string | undefined) || (u as any)?.sub || null;
+        const sub = (claims?.sub as string | undefined) || (u as any)?.sub || null;
         if (sub) {
           const key = "bootstrapped_sub";
           const last = localStorage.getItem(key);
@@ -88,19 +82,15 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
                   email: u?.email ?? null,
                   display_name: displayName,
                 }),
-              }).catch(() => { /* no-op */ });
-
+              }).catch(() => {});
               localStorage.setItem(key, sub);
-            } catch {
-              // 失敗してもアプリ続行
-            }
+            } catch {}
           }
         }
       } finally {
         if (mounted) setIsLoading(false);
       }
     })();
-
     return () => {
       mounted = false;
     };
@@ -111,13 +101,16 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       isLoading,
       isAuthenticated,
       user,
-
       loginWithRedirect: async (opts) => {
         const c = clientRef.current ?? (await auth0Promise);
         await c.loginWithRedirect({
           appState: { returnTo: location.pathname },
           ...opts,
         });
+      },
+      getAccessToken: async () => {
+        const c = clientRef.current ?? (await auth0Promise);
+        return c.getTokenSilently();
       },
     };
   }, [isLoading, isAuthenticated, user]);

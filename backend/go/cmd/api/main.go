@@ -13,15 +13,10 @@ import (
 	"slackgo/internal/http/middleware"
 	"slackgo/internal/storage"
 	"slackgo/internal/ws"
+
+	authpkg "slackgo/internal/auth" // ← パッケージを別名でインポート
 )
 
-// @title       MySlack API (Go)
-// @version     0.1
-// @description Minimal Slack-like backend with Gin + GORM + WS
-// @BasePath    /
-// @securityDefinitions.apikey Bearer
-// @in header
-// @name Authorization
 func main() {
 	cfg := config.Load()
 
@@ -29,7 +24,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	sqlDB, err := gdb.DB()
 	if err != nil {
 		log.Fatal(err)
@@ -38,7 +32,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// ★ ここで S3 依存を初期化（MinIO でも AWS でも OK）
+	// S3 依存初期化
 	s3deps, err := storage.NewS3Deps(context.Background(), cfg)
 	if err != nil {
 		log.Fatalf("init s3 deps failed: %v", err)
@@ -47,14 +41,26 @@ func main() {
 		log.Fatal("S3_BUCKET が未設定です")
 	}
 
+	// Handlers
+	authH := handlers.NewAuthHandler(gdb) // ← 変数名を authH に
 	hub := ws.NewHub()
-	auth := handlers.NewAuthHandler(gdb)
-	msg := handlers.NewMessagesHandler(gdb, hub)
-	ch := handlers.NewChannelsHandler(gdb)
-	wsh := handlers.NewWorkspacesHandler(gdb)
-	jwtMw := middleware.JWTAuth0(gdb, middleware.Auth0Config{Domain: cfg.Auth0Domain, Audience: cfg.Auth0Audience})
+	msgH := handlers.NewMessagesHandler(gdb, hub)
+	chH := handlers.NewChannelsHandler(gdb)
+	wsH := handlers.NewWorkspacesHandler(gdb)
 
-	router := httpapi.NewRouter(auth, msg, ch, wsh, jwtMw, hub, gdb, s3deps)
+	// WebSocket でも使う共通JWT Verifier
+	verifier, err := authpkg.NewVerifier(context.Background(), authpkg.Config{
+		Domain:   cfg.Auth0Domain,
+		Audience: cfg.Auth0Audience,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	jwtMw := middleware.JWTAuth0(gdb, verifier)
+
+	// ルータ作成（NewRouter の引数順はあなたの定義に合わせて）
+	router := httpapi.NewRouter(authH, msgH, chH, wsH, jwtMw, hub, gdb, s3deps, verifier)
 
 	log.Printf("listening on %s", cfg.BindAddr)
 	if err := router.Run(cfg.BindAddr); err != nil {

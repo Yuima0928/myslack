@@ -1,36 +1,20 @@
-// internal/http/middleware/jwt_auth0.go
 package middleware
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 
-	"slackgo/internal/model"
-
-	keyfunc "github.com/MicahParks/keyfunc/v3" // ← ルートを import
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
+
+	"slackgo/internal/auth"
+	"slackgo/internal/model"
 )
 
-type Auth0Config struct {
-	Domain   string // e.g. your-tenant.us.auth0.com
-	Audience string // e.g. https://api.myslack.local
-}
-
-func JWTAuth0(db *gorm.DB, cfg Auth0Config) gin.HandlerFunc {
-	jwksURL := "https://" + cfg.Domain + "/.well-known/jwks.json"
-
-	// v3: NewDefaultCtx で自動リフレッシュ付きの Keyfunc を作成
-	ctx := context.Background() // サーバのライフサイクルに合わせた ctx を使ってOK（終了時に cancel でも可）
-	kf, err := keyfunc.NewDefaultCtx(ctx, []string{jwksURL})
-	if err != nil {
-		panic(err)
-	}
-
+// JWTWithVerifier は auth.Verifier を使って JWT を検証し、JITでユーザーを作成します。
+// 成功時は c.Set("user_id", "<uuid-string>") / c.Set("user_email", *string|nil) を設定します。
+func JWTAuth0(db *gorm.DB, v *auth.Verifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authz := c.GetHeader("Authorization")
 		if !strings.HasPrefix(authz, "Bearer ") {
@@ -39,40 +23,21 @@ func JWTAuth0(db *gorm.DB, cfg Auth0Config) gin.HandlerFunc {
 		}
 		raw := strings.TrimPrefix(authz, "Bearer ")
 
-		// jwt.Parse のオプションで aud/iss/alg を厳密に検証
-		token, err := jwt.Parse(raw, kf.Keyfunc,
-			jwt.WithAudience(cfg.Audience),
-			jwt.WithIssuer("https://"+cfg.Domain+"/"), // 末尾スラッシュ必須
-			jwt.WithValidMethods([]string{"RS256"}),
-			jwt.WithLeeway(30*time.Second),
-		)
-		if err != nil || !token.Valid {
+		// ← ここで auth.Verifier を利用（aud/iss/alg 検証含む）
+		claims, err := v.Verify(raw)
+		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"detail": "invalid token"})
 			return
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"detail": "invalid claims"})
-			return
-		}
-
-		sub, _ := claims["sub"].(string)
-		email, _ := claims["email"].(string) // Access Token だと無いことが多い点は留意
-		name, _ := claims["name"].(string)
-		if sub == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"detail": "missing sub"})
-			return
-		}
-
-		// --- JIT プロビジョニング ---
+		// --- JIT プロビジョニング（既存と同じ挙動） ---
 		var u model.User
-		if err := db.Where("external_id = ?", sub).First(&u).Error; err != nil {
+		if err := db.Where("external_id = ?", claims.Sub).First(&u).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				u = model.User{
-					ExternalID:  &sub,
-					Email:       strPtrOrNil(email),
-					DisplayName: strPtrOrNil(name),
+					ExternalID:  strPtrOrNil(claims.Sub),
+					Email:       strPtrOrNil(claims.Email),
+					DisplayName: strPtrOrNil(claims.Name),
 				}
 				if err := db.Create(&u).Error; err != nil {
 					c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"detail": "user upsert failed"})
