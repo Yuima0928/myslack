@@ -45,14 +45,25 @@ type CreateChannelIn struct {
 // @Router   /workspaces/{ws_id}/channels [post]
 // POST /workspaces/:ws_id/channels  （作成者=ownerで channel_members 追加）
 func (h *ChannelsHandler) Create(c *gin.Context) {
-	uid := c.GetString("user_id")
-	wsID := c.Param("ws_id")
-	if uid == "" {
+	uidStr := c.GetString("user_id")
+	wsIDStr := c.Param("ws_id")
+	if uidStr == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "unauthorized"})
 		return
 	}
-	if wsID == "" {
+	if wsIDStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "ws_id required"})
+		return
+	}
+
+	uid, err := uuid.Parse(uidStr)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": "invalid user_id"})
+		return
+	}
+	wsID, err := uuid.Parse(wsIDStr)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": "invalid ws_id"})
 		return
 	}
 
@@ -61,46 +72,51 @@ func (h *ChannelsHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": err.Error()})
 		return
 	}
-
-	// 名前の正規化（前後空白カット）
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": "name must not be empty"})
 		return
 	}
 
-	ch := model.Channel{
-		WorkspaceID: uuid.MustParse(wsID),
-		Name:        name,
-		IsPrivate:   in.IsPrivate,
-		CreatedBy:   uuidPtr(uuid.MustParse(uid)),
-	}
+	var ch model.Channel
+	txErr := h.db.Transaction(func(tx *gorm.DB) error {
+		// 1) channels へ INSERT
+		ch = model.Channel{
+			WorkspaceID: wsID,
+			Name:        name,
+			IsPrivate:   in.IsPrivate,
+			CreatedBy:   &uid,
+		}
+		if err := tx.Create(&ch).Error; err != nil {
+			return err
+		}
 
-	if err := h.db.Create(&ch).Error; err != nil {
-		// ← 一意制約違反（23505）を 409 で返す
+		// 2) 作成者を owner で channel_members へ（重複時は何もしない）
+		cm := model.ChannelMember{
+			UserID:    uid,
+			ChannelID: ch.ID,
+			Role:      "owner",
+		}
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&cm).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if txErr != nil {
+		// 一意制約(23505)は 409
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			// どの制約か見分けたい場合は pgErr.ConstraintName を確認
-			// if pgErr.ConstraintName == "uq_channel_ws_name" { ... }
+		if errors.As(txErr, &pgErr) && pgErr.Code == "23505" {
 			c.JSON(http.StatusConflict, gin.H{
 				"detail": "channel name already exists in this workspace",
 				"code":   "channel_name_conflict",
 			})
 			return
 		}
-
-		// その他のDBエラーは 500
+		// その他は 500
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "create channel failed"})
 		return
 	}
-
-	// 作成者=ownerとして channel_members へ（失敗しても致命ではないのでログだけでもOK）
-	cm := model.ChannelMember{
-		UserID:    uuid.MustParse(uid),
-		ChannelID: ch.ID,
-		Role:      "owner",
-	}
-	_ = h.db.Create(&cm).Error
 
 	c.JSON(http.StatusOK, gin.H{"id": ch.ID.String()})
 }

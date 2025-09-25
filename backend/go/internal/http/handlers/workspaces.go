@@ -59,19 +59,25 @@ func (h *WorkspacesHandler) Create(c *gin.Context) {
 		return
 	}
 
-	ws := model.Workspace{Name: in.Name}
-	if err := h.db.Create(&ws).Error; err != nil {
+	var ws model.Workspace
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		ws = model.Workspace{Name: in.Name}
+		if err := tx.Create(&ws).Error; err != nil {
+			return err
+		}
+		wm := model.WorkspaceMember{
+			UserID:      uuid.MustParse(uid),
+			WorkspaceID: ws.ID,
+			Role:        "owner",
+		}
+		if err := tx.Create(&wm).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "create workspace failed"})
 		return
 	}
-
-	// 作成者=owner
-	wm := model.WorkspaceMember{
-		UserID:      uuid.MustParse(uid),
-		WorkspaceID: ws.ID,
-		Role:        "owner",
-	}
-	_ = h.db.Create(&wm).Error
 
 	c.JSON(http.StatusOK, gin.H{"id": ws.ID.String()})
 }
