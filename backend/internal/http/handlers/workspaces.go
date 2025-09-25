@@ -1,4 +1,3 @@
-// backend/go/internal/http/handlers/workspaces.go
 package handlers
 
 import (

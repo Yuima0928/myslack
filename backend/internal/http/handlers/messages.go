@@ -1,4 +1,3 @@
-// backend/go/internal/http/handlers/messages.go
 package handlers
 
 import (
