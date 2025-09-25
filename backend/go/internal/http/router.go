@@ -1,88 +1,22 @@
 package httpapi
 
 import (
-	"errors"
-	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
 
 	"slackgo/internal/auth"
 	"slackgo/internal/http/handlers"
 	"slackgo/internal/http/middleware"
-	"slackgo/internal/model"
+	"slackgo/internal/http/wsroute"
 	"slackgo/internal/storage"
 	"slackgo/internal/ws"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
-
-func ensureUserFromSub(db *gorm.DB, sub, email, name string) (uuid.UUID, error) {
-	var u model.User
-	if err := db.Where("external_id = ?", sub).First(&u).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			u = model.User{
-				ExternalID:  strPtrOrNil(sub),
-				Email:       strPtrOrNil(email),
-				DisplayName: strPtrOrNil(name),
-			}
-			if err := db.Create(&u).Error; err != nil {
-				return uuid.Nil, err
-			}
-		} else {
-			return uuid.Nil, err
-		}
-	}
-	return u.ID, nil
-}
-
-func canReadChannel(db *gorm.DB, userID uuid.UUID, channelID string) (bool, error) {
-	var ch struct {
-		ID          uuid.UUID
-		WorkspaceID uuid.UUID
-		IsPrivate   bool
-	}
-	if err := db.
-		Table("channels").
-		Select("id, workspace_id, is_private").
-		Where("id = ?", channelID).
-		Limit(1).
-		Scan(&ch).Error; err != nil {
-		return false, err
-	}
-	if ch.ID == uuid.Nil {
-		return false, nil
-	}
-	if ch.IsPrivate {
-		var n int64
-		if err := db.Table("channel_members").
-			Where("channel_id = ? AND user_id = ?", ch.ID, userID).
-			Count(&n).Error; err != nil {
-			return false, err
-		}
-		return n > 0, nil
-	}
-	var n int64
-	if err := db.Table("workspace_members").
-		Where("workspace_id = ? AND user_id = ?", ch.WorkspaceID, userID).
-		Count(&n).Error; err != nil {
-		return false, err
-	}
-	return n > 0, nil
-}
-
-func strPtrOrNil(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
 
 func NewRouter(
 	auth *handlers.AuthHandler,
@@ -165,87 +99,11 @@ func NewRouter(
 	// public, privateともにチャンネルへの書き込みはチャンネルメンバーでなくてはならない
 	msgs.POST("", middleware.RequireChannelWritable(db), msg.Create)
 
-	// WebSocket（そのまま）
-	upgrader := websocket.Upgrader{
-		// 本番は許可オリジンを絞ること
-		CheckOrigin: func(r *http.Request) bool {
-			origin := r.Header.Get("Origin")
-			return origin == "http://localhost:5173"
-		},
-		// こちらは「サーバが採用してよいプロトコル」のリスト
-		// bearer を明示しておく（トークン自体は採用しない）
-		Subprotocols: []string{"bearer"},
-	}
-
-	// httpapi.NewRouter 内の /ws ハンドラを差し替え
-	r.GET("/ws", func(c *gin.Context) {
-		channel := c.Query("channel_id")
-		if channel == "" {
-			c.AbortWithStatus(http.StatusBadRequest)
-			return
-		}
-
-		raw := c.Request.Header.Get("Sec-WebSocket-Protocol")
-		if raw == "" {
-			c.AbortWithStatus(http.StatusUnauthorized)
-			return
-		}
-		parts := strings.Split(raw, ",")
-		for i := range parts {
-			parts[i] = strings.TrimSpace(parts[i])
-		}
-		var token string
-		for _, p := range parts {
-			if strings.EqualFold(p, "bearer") {
-				continue
-			}
-			if p != "" {
-				token = p
-				break
-			}
-		}
-		if token == "" {
-			c.AbortWithStatus(http.StatusUnauthorized)
-			return
-		}
-
-		claims, err := verifier.Verify(token)
-		if err != nil {
-			c.AbortWithStatus(http.StatusUnauthorized)
-			return
-		}
-		uid, err := ensureUserFromSub(db, claims.Sub, claims.Email, claims.Name)
-		if err != nil {
-			c.AbortWithStatus(http.StatusInternalServerError)
-			return
-		}
-
-		// 接続時は「読めるか」だけチェック（private: channel member / public: WS member）
-		ok, err := canReadChannel(db, uid, channel)
-		if err != nil {
-			c.AbortWithStatus(http.StatusInternalServerError)
-			return
-		}
-		if !ok {
-			c.AbortWithStatus(http.StatusForbidden)
-			return
-		}
-
-		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-		if err != nil {
-			return
-		}
-
-		hub.Join(channel, conn)
-		go func() {
-			defer func() { hub.Leave(channel, conn); conn.Close() }()
-			// 上りは受け取っても何もしない（破棄）
-			for {
-				if _, _, err := conn.ReadMessage(); err != nil {
-					return
-				}
-			}
-		}()
+	wsroute.Register(r, wsroute.Deps{
+		DB:            db,
+		Hub:           hub,
+		Verifier:      verifier,
+		AllowedOrigin: "http://localhost:5173", // 本番は適切に絞る
 	})
 
 	// Swagger UI
