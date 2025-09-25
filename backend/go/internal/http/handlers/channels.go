@@ -310,47 +310,82 @@ func (h *ChannelsHandler) ListByWorkspace(c *gin.Context) {
 	c.JSON(http.StatusOK, rows)
 }
 
-// handlers/channels.go
 func (h *ChannelsHandler) IsMember(c *gin.Context) {
-	uid := c.GetString("user_id")
-	wsID := c.Param("ws_id")
+	uidStr := c.GetString("user_id")
+	wsID := c.Param("ws_id") // WS付きルート互換
 	chID := c.Param("channel_id")
-	if uid == "" || wsID == "" || chID == "" {
+	if uidStr == "" || chID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "bad params"})
 		return
 	}
+	uID, err := uuid.Parse(uidStr)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"detail": "bad user id"})
+		return
+	}
 
-	// チャンネルのWS整合性＆公開/非公開
+	// チャンネル情報
 	var ch struct {
+		ID          uuid.UUID
 		WorkspaceID uuid.UUID
 		IsPrivate   bool
+		CreatedBy   *uuid.UUID
 	}
 	if err := h.db.
 		Table("channels").
-		Select("workspace_id, is_private").
+		Select("id, workspace_id, is_private, created_by").
 		Where("id = ?", chID).
 		Take(&ch).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "channel not found"})
 		return
 	}
-	if ch.WorkspaceID.String() != wsID {
+
+	// WS付きルートでWS不一致は403
+	if wsID != "" && ch.WorkspaceID.String() != wsID {
 		c.JSON(http.StatusForbidden, gin.H{"detail": "forbidden"})
 		return
 	}
 
-	// メンバーかどうか
-	var n int64
-	if err := h.db.
-		Table("channel_members").
-		Where("channel_id = ? AND user_id = ?", chID, uid).
-		Count(&n).Error; err != nil {
+	// 作成者＝メンバー扱い
+	isOwner := ch.CreatedBy != nil && *ch.CreatedBy == uID
+
+	// channel_members
+	var chCnt int64
+	if err := h.db.Table("channel_members").
+		Where("channel_id = ? AND user_id = ?", ch.ID, uID).
+		Count(&chCnt).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "lookup failed"})
 		return
 	}
+	isChMember := chCnt > 0
+
+	// workspace_members
+	var wsCnt int64
+	if err := h.db.Table("workspace_members").
+		Where("workspace_id = ? AND user_id = ?", ch.WorkspaceID, uID).
+		Count(&wsCnt).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "lookup failed"})
+		return
+	}
+	isWsMember := wsCnt > 0
+
+	// 読み取り/書き込み/メンバー判定
+	canRead := (!ch.IsPrivate && isWsMember) || (ch.IsPrivate && (isOwner || isChMember))
+	canPost := isOwner || isChMember
+	isMember := isOwner || isChMember
+	role := "none"
+	if isOwner {
+		role = "owner"
+	} else if isChMember {
+		role = "member"
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"is_member":  n > 0,
-		"is_private": ch.IsPrivate, // あればUIでの表示条件に使える
+		"is_member":  isMember,
+		"can_read":   canRead,
+		"can_post":   canPost,
+		"role":       role,
+		"is_private": ch.IsPrivate,
 	})
 }
 
