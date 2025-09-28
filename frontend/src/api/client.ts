@@ -1,4 +1,5 @@
 // src/api/client.ts
+// src/api/client.ts
 const API_BASE = import.meta.env.VITE_API_BASE as string;
 
 export type Msg = {
@@ -7,13 +8,18 @@ export type Msg = {
   channel_id: string;
   user_id: string;
   text: string;
+  // 追加フィールド（サーバの MsgOut に合わせる）
+  user_display_name?: string | null;
+  user_avatar_file_id?: string | null;
+  parent_id?: string | null;
+  thread_root_id?: string | null;
+  created_at: string; 
 };
 
-// （任意）サーバが返す File レコードの型
 export type FileRec = {
   id: string;
-  workspace_id: string;
-  channel_id: string;
+  workspace_id: string | null; // アバター用途では null の可能性も
+  channel_id: string | null;
   uploader_id: string;
   filename: string;
   content_type?: string | null;
@@ -68,8 +74,8 @@ async function authedJson<T>(path: string, init: RequestInit = {}) {
 
   if (!res.ok) {
     const msg =
-      typeof body === "object" && body && "error" in body
-        ? (body as any).error?.message ?? JSON.stringify(body)
+      typeof body === "object" && body
+        ? ((body as any).detail || (body as any).error || JSON.stringify(body))
         : String(body);
     throw new Error(msg || `HTTP ${res.status}`);
   }
@@ -79,10 +85,33 @@ async function authedJson<T>(path: string, init: RequestInit = {}) {
 
 // ---- Public API ----
 export const api = {
-  async me() {
-    return authedJson<{ id: string; email: string; display_name?: string }>(
+  // Authミドルウェアが埋めた user_id を返す軽量エンドポイント
+  async authMe() {
+    return authedJson<{ id: string; email?: string | null; display_name?: string | null }>(
       "/auth/me"
     );
+  },
+
+  // プロフィール（display_name, avatar_url 等を返す）
+  async getMe() {
+    return authedJson<{
+      id: string;
+      email?: string | null;
+      display_name?: string | null;
+      avatar_file_id?: string | null;
+      avatar_url?: string | null;
+    }>("/users/me");
+  },
+
+  async updateMe(payload: {
+    display_name?: string | null;
+    avatar_file_id_or_null?: string | null;
+  }) {
+    await authedJson<void>("/users/me", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    return true;
   },
 
   async listWorkspaces() {
@@ -92,7 +121,7 @@ export const api = {
   async createWorkspace(name: string) {
     return authedJson<{ id: string }>("/workspaces", {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name: name.trim() }),
     });
   },
 
@@ -103,13 +132,13 @@ export const api = {
   },
 
   async isChannelMember(channelId: string) {
-      return authedJson<{
-        is_member: boolean;
-        can_read: boolean;
-        can_post: boolean;
-        role: "owner" | "member" | "none";
-        is_private: boolean;
-      }>(`/channels/${channelId}/membership`)
+    return authedJson<{
+      is_member: boolean;
+      can_read: boolean;
+      can_post: boolean;
+      role: "owner" | "member" | "none";
+      is_private: boolean;
+    }>(`/channels/${channelId}/membership`);
   },
 
   async joinSelf(wsId: string, channelId: string) {
@@ -122,7 +151,7 @@ export const api = {
   async createChannel(wsId: string, name: string, isPrivate = false) {
     return authedJson<{ id: string }>(`/workspaces/${wsId}/channels`, {
       method: "POST",
-      body: JSON.stringify({ name, is_private: isPrivate }),
+      body: JSON.stringify({ name: name.trim(), is_private: isPrivate }),
     });
   },
 
@@ -144,7 +173,11 @@ export const api = {
     );
   },
 
-  async addWorkspaceMember(wsId: string, userId: string, role: "owner" | "member" = "member") {
+  async addWorkspaceMember(
+    wsId: string,
+    userId: string,
+    role: "owner" | "member" = "member"
+  ) {
     return authedJson<{ ok: boolean }>(`/workspaces/${wsId}/members`, {
       method: "POST",
       body: JSON.stringify({ user_id: userId, role }),
@@ -158,45 +191,56 @@ export const api = {
     );
   },
 
-  async addChannelMember(channelId: string, userId: string, role: "owner" | "member" = "member") {
+  async addChannelMember(
+    channelId: string,
+    userId: string,
+    role: "owner" | "member" = "member"
+  ) {
     return authedJson<{ ok: boolean }>(`/channels/${channelId}/members`, {
       method: "POST",
       body: JSON.stringify({ user_id: userId, role }),
     });
   },
 
-  // ====== ここからファイル系 ======
-  async signUpload(
+  // アバター用の署名URL発行
+  async signUploadAvatar(input: {
+    filename: string;
+    content_type: string;
+    size_bytes: number;
+  }) {
+    return authedJson<{ upload_url: string; storage_key: string; file_id: string }>(
+      "/users/me/avatar/sign-upload",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      }
+    );
+  },
+
+  async signUploadMessage(
     wsId: string,
     chId: string,
-    p: { filename: string; content_type: string; size_bytes: number }
+    input: { filename: string; content_type: string; size_bytes: number }
   ) {
     return authedJson<{ upload_url: string; storage_key: string; file_id: string }>(
       `/workspaces/${wsId}/channels/${chId}/files/sign-upload`,
       {
         method: "POST",
-        body: JSON.stringify(p),
+        body: JSON.stringify(input),
       }
     );
   },
 
-  async completeFile(p: {
-    storage_key: string;
-    etag: string;
-    sha256_hex?: string | null;
-    filename: string;
-    content_type: string;
-    size_bytes: number;
-    workspace_id: string;
-    channel_id: string;
-  }) {
+  // 完了報告（purpose を渡せるように）
+  async completeFile(payload: any) {
     return authedJson<FileRec>("/files/complete", {
       method: "POST",
-      body: JSON.stringify(p),
+      body: JSON.stringify(payload),
     });
   },
 
-  async getFileURL(fileId: string, disposition: "inline" | "attachment" = "attachment") {
+  // 任意ファイルの署名GET URLを取得
+  async getFileURL(fileId: string, disposition: "inline" | "attachment" = "inline") {
     return authedJson<{ url: string; expires_at: string }>(
       `/files/${fileId}/url?disposition=${disposition}`
     );
