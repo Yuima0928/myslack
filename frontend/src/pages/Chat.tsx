@@ -5,6 +5,9 @@ import { useAuth } from "../auth/AuthContext";
 import ChannelList from "../components/ChannelList";
 import MessageList from "../components/MessageList";
 import MessageInput from "../components/MessageInput";
+import ChannelCreateForm from "../components/ChannelCreateForm";
+import ProfileSetupModal from "../components/ProfileSetupModal";
+
 
 type Workspace = { id: string; name: string };
 type Channel = { id: string; name: string; is_private?: boolean };
@@ -17,6 +20,8 @@ export default function Chat() {
   const [activeWs, setActiveWs] = useState<string | null>(null);
   const [activeCh, setActiveCh] = useState<string | null>(null);
   const [isMember, setIsMember] = useState<boolean>(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [needsProfile, setNeedsProfile] = useState(false);
 
   // Protected が未認証を /login に飛ばすので、ここではローディングだけ見る
   if (isLoading) return <div style={{ padding: 20 }}>Loading…</div>;
@@ -59,11 +64,20 @@ export default function Chat() {
     })();
   }, [isAuthenticated, activeWs, activeCh]);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    (async () => {
+      try {
+        const me = await api.getMe(); // { display_name?, avatar_url?, ... }
+        if (!me.display_name || me.display_name.trim() === "") {
+          setNeedsProfile(true);
+        }
+      } catch {
+        // 無視（失敗しても致命ではない）
+      }
+    })();
+  }, [isAuthenticated]);
 
-  const currentWs = useMemo(
-    () => workspaces.find(w => w.id === activeWs) || null,
-    [workspaces, activeWs]
-  );
   const currentCh = useMemo(
     () => channels.find(c => c.id === activeCh) || null,
     [channels, activeCh]
@@ -147,15 +161,31 @@ export default function Chat() {
           })}
         </div>
 
-        <button className="btn" onClick={async () => {
-          if (!activeWs) return alert("Select a workspace first");
-          const name = prompt("Channel name");
-          if (!name) return;
-          const res = await api.createChannel(activeWs, name);
-          const newCh = { id: res.id, name };
-          setChannels([newCh, ...channels]);
-          setActiveCh(res.id);
-        }}>+ Create Channel</button>
+        <div style={{ display: "grid", gap: 8 }}>
+          <button
+            className="btn"
+            onClick={() => setShowCreateForm((v) => !v)}
+          >
+            {showCreateForm ? "Close" : "+ Create Channel"}
+          </button>
+
+          {showCreateForm && (
+            <ChannelCreateForm
+              onCancel={() => setShowCreateForm(false)}
+              onCreate={async (name, isPrivate) => {
+                if (!activeWs) {
+                  alert("Select a workspace first");
+                  return;
+                }
+                const res = await api.createChannel(activeWs, name, isPrivate);
+                const newCh = { id: res.id, name, is_private: isPrivate };
+                setChannels([newCh, ...channels]);
+                setActiveCh(res.id);
+                setShowCreateForm(false);
+              }}
+            />
+          )}
+        </div>
 
         <button className="btn" onClick={handleAddChannelMember}>+ Add Channel Member</button>
 
@@ -164,10 +194,14 @@ export default function Chat() {
       </aside>
 
       <section className="content">
+        {/* ヘッダー例 */}
         <div className="header">
           <div className="channel-pill">Channel: {currentCh ? currentCh.name : "—"}</div>
-          {currentWs && <div style={{ color: "#9ca3af" }}>in <code>{currentWs.name}</code></div>}
+          <div style={{ flex: 1 }} />
+          <button className="btn" onClick={() => setNeedsProfile(true)}>プロフィール編集</button>
         </div>
+        {needsProfile && <ProfileSetupModal onDone={() => setNeedsProfile(false)} />}
+
 
         <MessageList channelId={activeCh} />
         {activeWs && activeCh ? (

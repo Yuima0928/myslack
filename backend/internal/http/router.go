@@ -49,16 +49,23 @@ func NewRouter(
 	api.Use(jwtMw)
 	api.POST("/auth/bootstrap", auth.Bootstrap)
 
+	usersH := handlers.NewUsersHandler(db, s3deps)
+	api.GET("/users/me", usersH.GetMe)
+	api.PUT("/users/me", usersH.UpdateMe)
+
 	filesH := handlers.NewFilesHandler(db, s3deps)
 
-	// 署名発行（書き込み権限必須）
+	/// 署名発行
 	api.POST("/workspaces/:ws_id/channels/:channel_id/files/sign-upload",
-		middleware.RequireWorkspaceMember(db), filesH.SignUpload)
+		middleware.RequireWorkspaceMember(db), filesH.SignUploadMessage)
+
+	// アバター用署名発行
+	api.POST("/users/me/avatar/sign-upload", filesH.SignUploadAvatar)
 
 	// 完了報告
 	api.POST("/files/complete", filesH.Complete)
 
-	// ダウンロード用URL
+	// ダウンロードURL
 	api.GET("/files/:file_id/url", filesH.GetDownloadURL)
 
 	// Workspaces

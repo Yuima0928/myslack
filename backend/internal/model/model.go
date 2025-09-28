@@ -8,11 +8,12 @@ import (
 )
 
 type User struct {
-	ID          uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Email       *string   `gorm:"uniqueIndex;omitempty"                          json:"email"`
-	DisplayName *string   `json:"display_name,omitempty"`
-	ExternalID  *string   `json:"external_id,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID           uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Email        *string    `gorm:"uniqueIndex;omitempty"                          json:"email"`
+	DisplayName  *string    `json:"display_name,omitempty"`
+	ExternalID   *string    `json:"external_id,omitempty"`
+	AvatarFileID *uuid.UUID `json:"avatar_file_id,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 type Workspace struct {
@@ -76,22 +77,32 @@ type ChannelMember struct {
 
 // File は files テーブル
 type File struct {
-	ID          uuid.UUID      `gorm:"type:uuid;default:gen_random_uuid();primaryKey"                                                  json:"id"`
-	WorkspaceID uuid.UUID      `gorm:"type:uuid;not null"                                                                               json:"workspace_id"`
-	Workspace   Workspace      `gorm:"foreignKey:WorkspaceID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"               json:"-"`
-	ChannelID   uuid.UUID      `gorm:"type:uuid;not null;index:idx_files_channel"                                                       json:"channel_id"`
-	Channel     Channel        `gorm:"foreignKey:ChannelID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"                 json:"-"`
-	UploaderID  uuid.UUID      `gorm:"type:uuid;not null;index:idx_files_uploader"                                                      json:"uploader_id"`
-	Uploader    User           `gorm:"foreignKey:UploaderID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"                json:"-"`
-	Filename    string         `gorm:"type:text;not null"                                                                               json:"filename"`
-	ContentType *string        `gorm:"type:text"                                                                                        json:"content_type,omitempty"`
-	SizeBytes   *int64         `gorm:"type:bigint"                                                                                      json:"size_bytes,omitempty"`
-	ETag        *string        `gorm:"column:etag"         json:"etag,omitempty"`
-	SHA256Hex   *string        `gorm:"type:text"                                                                                        json:"sha256_hex,omitempty"`
-	StorageKey  string         `gorm:"type:text;not null"                                                                               json:"storage_key"` // s3 のキー等
-	IsImage     bool           `gorm:"not null;default:false"                                                                           json:"is_image"`
-	CreatedAt   time.Time      `gorm:"index:idx_files_created"                                                                          json:"created_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index"                                                                                            json:"deleted_at,omitempty"`
+	ID uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+
+	// 用途: message_attachment / avatar など
+	Purpose string `gorm:"type:text;not null;default:message_attachment" json:"purpose"`
+
+	// メッセージ添付のとき
+	WorkspaceID *uuid.UUID `gorm:"type:uuid" json:"workspace_id,omitempty"`
+	Workspace   Workspace  `gorm:"foreignKey:WorkspaceID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+	ChannelID   *uuid.UUID `gorm:"type:uuid;index:idx_files_channel" json:"channel_id,omitempty"`
+	Channel     Channel    `gorm:"foreignKey:ChannelID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+
+	// アバターのとき
+	OwnerUserID *uuid.UUID `gorm:"type:uuid;index:idx_files_owner_user" json:"owner_user_id,omitempty"`
+	OwnerUser   User       `gorm:"foreignKey:OwnerUserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+
+	UploaderID  uuid.UUID      `gorm:"type:uuid;not null;index:idx_files_uploader" json:"uploader_id"`
+	Uploader    User           `gorm:"foreignKey:UploaderID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+	Filename    string         `gorm:"type:text;not null" json:"filename"`
+	ContentType *string        `gorm:"type:text" json:"content_type,omitempty"`
+	SizeBytes   *int64         `gorm:"type:bigint" json:"size_bytes,omitempty"`
+	ETag        *string        `gorm:"column:etag" json:"etag,omitempty"`
+	SHA256Hex   *string        `gorm:"type:text" json:"sha256_hex,omitempty"`
+	StorageKey  string         `gorm:"type:text;not null" json:"storage_key"`
+	IsImage     bool           `gorm:"not null;default:false" json:"is_image"`
+	CreatedAt   time.Time      `gorm:"index:idx_files_created" json:"created_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
 // MessageAttachment は明示的な中間テーブル（任意：many2manyだけでも動く）
