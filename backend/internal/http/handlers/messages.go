@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -28,13 +29,16 @@ type MsgCreateIn struct {
 }
 
 type MsgOut struct {
-	ID           uuid.UUID  `json:"id"`
-	WorkspaceID  uuid.UUID  `json:"workspace_id"`
-	ChannelID    uuid.UUID  `json:"channel_id"`
-	UserID       uuid.UUID  `json:"user_id"`
-	Text         string     `json:"text"`
-	ParentID     *uuid.UUID `json:"parent_id,omitempty"`
-	ThreadRootID *uuid.UUID `json:"thread_root_id,omitempty"`
+	ID               uuid.UUID  `json:"id"`
+	WorkspaceID      uuid.UUID  `json:"workspace_id"`
+	ChannelID        uuid.UUID  `json:"channel_id"`
+	UserID           uuid.UUID  `json:"user_id"`
+	UserDisplayName  *string    `json:"user_display_name,omitempty"`
+	UserAvatarFileID *uuid.UUID `json:"user_avatar_file_id,omitempty"`
+	Text             string     `json:"text"`
+	ParentID         *uuid.UUID `json:"parent_id,omitempty"`
+	ThreadRootID     *uuid.UUID `json:"thread_root_id,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
 }
 
 // Create message godoc
@@ -119,14 +123,26 @@ func (h *MessagesHandler) Create(c *gin.Context) {
 		return
 	}
 
+	var disp *string
+	var avatarID *uuid.UUID
+
+	_ = h.db.Table("users").
+		Select("display_name, avatar_file_id").
+		Where("id = ?", uid).
+		Row().
+		Scan(&disp, &avatarID)
+
 	out := MsgOut{
-		ID:           msg.ID,
-		WorkspaceID:  msg.WorkspaceID,
-		ChannelID:    msg.ChannelID,
-		UserID:       *msg.UserID,
-		Text:         text,
-		ParentID:     msg.ParentID,
-		ThreadRootID: msg.ThreadRootID,
+		ID:               msg.ID,
+		WorkspaceID:      msg.WorkspaceID,
+		ChannelID:        msg.ChannelID,
+		UserID:           *msg.UserID,
+		UserDisplayName:  disp,
+		UserAvatarFileID: avatarID,
+		Text:             text,
+		ParentID:         msg.ParentID,
+		ThreadRootID:     msg.ThreadRootID,
+		CreatedAt:        msg.CreatedAt,
 	}
 	c.JSON(http.StatusOK, out)
 
@@ -174,22 +190,39 @@ func (h *MessagesHandler) List(c *gin.Context) {
 		}
 	}
 
-	var rows []model.Message
-	q := h.db.Where("channel_id = ?", chID)
+	type row struct {
+		ID               uuid.UUID
+		WorkspaceID      uuid.UUID
+		ChannelID        uuid.UUID
+		UserID           *uuid.UUID
+		Text             *string
+		ParentID         *uuid.UUID
+		ThreadRootID     *uuid.UUID
+		UserDisplayName  *string
+		UserAvatarFileID *uuid.UUID
+		CreatedAt        time.Time
+	}
 
-	// thread_root_id があれば「スレッド返信」を返す
+	var rows []row
+
+	q := h.db.Table("messages m").
+		Select(`m.id, m.workspace_id, m.channel_id, m.user_id, m.text, m.parent_id, m.thread_root_id, m.created_at,
+			u.display_name AS user_display_name, u.avatar_file_id AS user_avatar_file_id`).
+		Joins("LEFT JOIN users u ON u.id = m.user_id").
+		Where("m.channel_id = ?", chID)
+
 	if threadRootIDStr != "" {
 		if tid, err := uuid.Parse(threadRootIDStr); err == nil {
-			q = q.Where("thread_root_id = ?", tid)
+			q = q.Where("m.thread_root_id = ?", tid)
 		} else {
 			c.JSON(http.StatusBadRequest, gin.H{"detail": "invalid thread_root_id"})
 			return
 		}
 	} else if rootOnly {
-		// ルートのみ（= スレッドの先頭 or 通常投稿）=> thread_root_id IS NULL を返す
-		q = q.Where("thread_root_id IS NULL")
+		q = q.Where("m.thread_root_id IS NULL")
 	}
-	if err := q.Order("created_at ASC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+
+	if err := q.Order("m.created_at ASC").Limit(limit).Offset(offset).Scan(&rows).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "query failed"})
 		return
 	}
@@ -197,13 +230,16 @@ func (h *MessagesHandler) List(c *gin.Context) {
 	out := make([]MsgOut, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, MsgOut{
-			ID:           r.ID,
-			WorkspaceID:  r.WorkspaceID,
-			ChannelID:    r.ChannelID,
-			UserID:       derefUUID(r.UserID),
-			Text:         derefStr(r.Text),
-			ParentID:     r.ParentID,
-			ThreadRootID: r.ThreadRootID,
+			ID:               r.ID,
+			WorkspaceID:      r.WorkspaceID,
+			ChannelID:        r.ChannelID,
+			UserID:           derefUUID(r.UserID),
+			UserDisplayName:  r.UserDisplayName,
+			UserAvatarFileID: r.UserAvatarFileID, // ← 追加
+			Text:             derefStr(r.Text),
+			ParentID:         r.ParentID,
+			ThreadRootID:     r.ThreadRootID,
+			CreatedAt:        r.CreatedAt,
 		})
 	}
 	c.JSON(http.StatusOK, out)
