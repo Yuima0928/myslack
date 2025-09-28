@@ -3,6 +3,8 @@ package storage
 
 import (
 	"context"
+	"fmt"
+	"net/url"
 	"time"
 
 	"slackgo/internal/config"
@@ -61,4 +63,37 @@ func NewS3Deps(ctx context.Context, c config.Config) (*S3Deps, error) {
 		Prefix: c.S3Prefix,
 		Expire: time.Duration(c.S3URLExpirySec) * time.Second,
 	}, nil
+}
+
+func (s *S3Deps) SignGetURL(
+	ctx context.Context,
+	storageKey string,
+	filename string,
+	contentType string,
+	disposition string, // "inline" or "attachment"
+) (string, error) {
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	contentDisp := fmt.Sprintf(`%s; filename="%s"`, disposition, url.PathEscape(filename))
+
+	out, err := s.Presign.PresignGetObject(
+		ctx,
+		&s3.GetObjectInput{
+			Bucket:                     aws.String(s.Bucket),
+			Key:                        aws.String(storageKey),
+			ResponseContentDisposition: aws.String(contentDisp),
+			ResponseContentType:        aws.String(contentType),
+		},
+		func(o *s3.PresignOptions) { o.Expires = s.Expire },
+	)
+	if err != nil {
+		return "", err
+	}
+	return out.URL, nil
+}
+
+// 便利: 署名の有効期限を知りたい場合に使う（省略可）
+func (s *S3Deps) Expiry() time.Duration {
+	return s.Expire
 }
