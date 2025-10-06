@@ -71,8 +71,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
               const at = await client.getTokenSilently();
               const displayName =
                 u?.name ?? (u as any)?.nickname ?? (u?.email?.split("@")[0] ?? null);
-
-              await fetch("http://localhost:8000/auth/bootstrap", {
+              const API_BASE = import.meta.env.VITE_API_BASE;
+              await fetch(`${API_BASE}/auth/bootstrap`, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",

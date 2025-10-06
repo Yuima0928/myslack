@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -18,8 +20,24 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
+func readOriginsEnv(key, def string) []string {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		raw = def
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		s := strings.TrimSpace(p)
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func NewRouter(
-	auth *handlers.AuthHandler,
+	authH *handlers.AuthHandler,
 	msg *handlers.MessagesHandler,
 	ch *handlers.ChannelsHandler,
 	wsH *handlers.WorkspacesHandler,
@@ -31,11 +49,12 @@ func NewRouter(
 ) *gin.Engine {
 	r := gin.Default()
 
-	// ★ CORS
+	// ---- CORS 設定（ENVから）----
+	allowOrigins := readOriginsEnv("CORS_ALLOW_ORIGINS", "http://localhost:5173")
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowOrigins:     allowOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Authorization", "Content-Type"},
+		AllowHeaders:     []string{"Authorization", "Content-Type", "Accept", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
@@ -43,59 +62,41 @@ func NewRouter(
 
 	r.GET("/health", handlers.Health)
 
-	r.GET("/auth/me", jwtMw, auth.Me)
+	r.GET("/auth/me", jwtMw, authH.Me)
 
 	api := r.Group("/")
 	api.Use(jwtMw)
-	api.POST("/auth/bootstrap", auth.Bootstrap)
+	api.POST("/auth/bootstrap", authH.Bootstrap)
 
 	usersH := handlers.NewUsersHandler(db, s3deps)
 	api.GET("/users/me", usersH.GetMe)
 	api.PUT("/users/me", usersH.UpdateMe)
 
 	filesH := handlers.NewFilesHandler(db, s3deps)
-
-	/// 署名発行
 	api.POST("/workspaces/:ws_id/channels/:channel_id/files/sign-upload",
 		middleware.RequireWorkspaceMember(db), filesH.SignUploadMessage)
-
-	// アバター用署名発行
 	api.POST("/users/me/avatar/sign-upload", filesH.SignUploadAvatar)
-
-	// 完了報告
 	api.POST("/files/complete", filesH.Complete)
-
-	// ダウンロードURL
 	api.GET("/files/:file_id/url", filesH.GetDownloadURL)
 
-	// Workspaces
-	api.POST("/workspaces", wsH.Create) // 作成者=owner
+	api.POST("/workspaces", wsH.Create)
 	api.GET("/workspaces", wsH.ListMine)
 
-	// workspaceのメンバーではないと、チャンネルのメンバーは見れない //これ今使っていない？
 	api.GET("/workspaces/:ws_id/members", middleware.RequireWorkspaceMember(db), wsH.ListMembers)
-	// workspaceに招待できるのは、workspaceのメンバーのみ
 	api.POST("/workspaces/:ws_id/members", middleware.RequireWorkspaceMember(db), wsH.AddMember)
 
-	// 追加: 登録ユーザー検索（認証必須でOK）
 	api.GET("/users/search", wsH.SearchUsers)
 
-	// Channels under workspace
 	wsGroup := api.Group("/workspaces/:ws_id")
 	wsGroup.Use(middleware.RequireWorkspaceMember(db))
-	// 作成はowner限定にしたい場合は RequireWorkspaceOwner にする
-	// workspaceのメンバーではないと、チャンネルを作成できない
 	wsGroup.POST("/channels", ch.Create)
-	// workspaceのメンバーではないと、チャンネルを観覧できない。ただしch.ListByWorkspaceの実装により、観覧できるチャンネルはpublic or privateでそのチャンネルメンバーの場合
 	wsGroup.GET("/channels", ch.ListByWorkspace)
 	wsGroup.POST("/channels/:channel_id/join", ch.JoinSelf)
 
 	api.GET("/channels/:channel_id/membership", middleware.RequireChannelReadable(db), ch.IsMember)
 
-	// Channel members
 	chGroup := api.Group("/channels/:channel_id")
 	chGroup.Use(middleware.RequireChannelMember(db))
-	// チャンネルメンバーであればチャンネルへの追加ができる
 	chGroup.POST("/members", ch.AddMember)
 	chGroup.GET("/members/search", ch.SearchWorkspaceMembers)
 
@@ -106,17 +107,23 @@ func NewRouter(
 	// public, privateともにチャンネルへの書き込みはチャンネルメンバーでなくてはならない
 	msgs.POST("", middleware.RequireChannelWritable(db), msg.Create)
 
+	// ---- WS AllowedOrigin も ENV から ----
+	wsAllowed := readOriginsEnv("WS_ALLOWED_ORIGIN", "http://localhost:5173")
+	firstWSOrigin := "http://localhost:5173"
+	if len(wsAllowed) > 0 {
+		firstWSOrigin = wsAllowed[0]
+	}
 	wsroute.Register(r, wsroute.Deps{
 		DB:            db,
 		Hub:           hub,
 		Verifier:      verifier,
-		AllowedOrigin: "http://localhost:5173", // 本番は適切に絞る
+		AllowedOrigin: firstWSOrigin,
 	})
 
-	// Swagger UI
+	// Swagger
 	r.GET("/docs/*any", ginSwagger.WrapHandler(
 		swaggerFiles.Handler,
-		ginSwagger.URL("/docs/doc.json"), // ← UI が読む JSON の絶対パスを指定
+		ginSwagger.URL("/docs/doc.json"),
 	))
 
 	return r

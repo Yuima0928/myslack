@@ -78,6 +78,7 @@ func (h *FilesHandler) SignUploadMessage(c *gin.Context) {
 		func(o *s3.PresignOptions) { o.Expires = h.s3.Expire },
 	)
 	if err != nil {
+		c.Error(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "presign failed"})
 		return
 	}
