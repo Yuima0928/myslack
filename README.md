@@ -62,15 +62,9 @@ bash -x ./deploy.sh
 - Allowed Web Origins / Allowed Origins (CORS)：https://<CloudFront ドメイン>
 - Allowed Callback URLs：実装のコールバックパス（例 https://<CF>/callback）
 - Allowed Logout URLs：https://<CloudFront ドメイン>/
-- v
+- API 側 .env に AUTH0_DOMAIN / AUTH0_AUDIENCE を設定
 
 ### 環境差分の保ち方
 - Terraform：*.tfvars 単位でバケット名や CF 設定を切替
 - API：.envで JWT/DB/S3/CORS 等を切替
 - ドメイン：api.<EIP>.nip.io を利用（EIP が変わったら DOMAIN を更新）
-
-
-
-
-
-
