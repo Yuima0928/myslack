@@ -6,7 +6,6 @@ bin/
 coverage.*
 
 # Build artifacts
-/app/
 dist/
 tmp/
 
@@ -23,17 +22,15 @@ tmp/
 node_modules/
 
 # Environments / secrets
-.env
-.env.*.local
+*.env
+.env*
+infra/docker/.env
 secrets/
 
 # Logs
 logs/
 *.log
 
-# Generated (proto使うならここをメンテ)
-# internal/rpc/**/*.pb.go
-# internal/rpc/**/*_connect.go
+/minio-data/
 
-/minio-data/
-/minio-data/
+.terraform
