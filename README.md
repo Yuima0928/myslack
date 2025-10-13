@@ -1,8 +1,7 @@
-## 開発中メモ（myslack のデプロイ運用）
+# myslack(個人開発)
 
-> 目的：**S3+CloudFront（フロント）** と **EC2/Docker/Nginx/Certbot/Postgres（API）** を、安全に・わかりやすく・再現可能にデプロイするための実務メモ。
 
-### 全体像
+## 全体像
 - フロント：`app/frontend` をビルド → S3 に配置 → CloudFront で配信（必要に応じて無効化で反映）
 - API：EC2 上で `docker compose` で **postgres / api / nginx** を起動  
   初回は **HTTP(80)** でブート → **Certbot(webroot)** で証明書発行 → **HTTPS(443)** に切替
@@ -19,7 +18,7 @@
 
 ---
 
-### デプロイ TL;DR（コマンド集）
+### デプロイ 
 **インフラ（必要に応じて）**
 ```bash
 terraform init
@@ -68,3 +67,18 @@ bash -x ./deploy.sh
 - Terraform：*.tfvars 単位でバケット名や CF 設定を切替
 - API：.envで JWT/DB/S3/CORS 等を切替
 - ドメイン：api.<EIP>.nip.io を利用（EIP が変わったら DOMAIN を更新）
+
+## ローカル開発
+
+### backendの起動
+```bash
+cd app
+docker compose up -d --build
+```
+
+### frontendの起動
+```bash
+cd app/frontend
+npm ci
+npm run dev
+```
