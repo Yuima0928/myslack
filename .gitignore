@@ -34,3 +34,4 @@ logs/
 /minio-data/
 
 .terraform
+*.tfvars
