@@ -64,9 +64,6 @@ func NewRouter(
 	api.POST("/workspaces", wsH.Create) // 作成者=owner
 	api.GET("/workspaces", wsH.ListMine)
 
-	// workspaceのメンバーではないと、チャンネルのメンバーは見れない //これ今使っていない？
-	api.GET("/workspaces/:ws_id/members", middleware.RequireWorkspaceMember(db), wsH.ListMembers)
-	// workspaceに招待できるのは、workspaceのメンバーのみ
 	api.POST("/workspaces/:ws_id/members", middleware.RequireWorkspaceMember(db), wsH.AddMember)
 
 	// 追加: 登録ユーザー検索（認証必須でOK）
