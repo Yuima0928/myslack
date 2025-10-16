@@ -82,7 +82,6 @@ func NewRouter(
 	api.POST("/workspaces", wsH.Create)
 	api.GET("/workspaces", wsH.ListMine)
 
-	api.GET("/workspaces/:ws_id/members", middleware.RequireWorkspaceMember(db), wsH.ListMembers)
 	api.POST("/workspaces/:ws_id/members", middleware.RequireWorkspaceMember(db), wsH.AddMember)
 
 	api.GET("/users/search", wsH.SearchUsers)

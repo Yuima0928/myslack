@@ -108,37 +108,6 @@ func (h *WorkspacesHandler) ListMine(c *gin.Context) {
 	c.JSON(http.StatusOK, ws)
 }
 
-// ListMembers godoc
-// @Summary  List workspace members
-// @Tags     workspaces
-// @Produce  json
-// @Param    ws_id path string true "Workspace ID (UUID)"
-// @Success  200 {array}  handlers.WorkspaceMemberRow
-// @Failure  401 {object} map[string]string
-// @Failure  404 {object} map[string]string
-// @Security Bearer
-// @Router   /workspaces/{ws_id}/members [get]
-// GET /workspaces/:ws_id/members
-func (h *WorkspacesHandler) ListMembers(c *gin.Context) {
-	wsID := c.Param("ws_id")
-	if wsID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"detail": "ws_id required"})
-		return
-	}
-
-	var rows []WorkspaceMemberRow
-	if err := h.db.
-		Table("workspace_members wm").
-		Select("wm.user_id, wm.role, u.email, u.display_name").
-		Joins("JOIN users u ON u.id = wm.user_id").
-		Where("wm.workspace_id = ?", wsID).
-		Find(&rows).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"detail": "list failed"})
-		return
-	}
-	c.JSON(http.StatusOK, rows)
-}
-
 type AddWorkspaceMemberIn struct {
 	// 追加するユーザのUUID
 	UserID string `json:"user_id" binding:"required,uuid" example:"6d4c2f52-1f1c-4e7d-92a2-4b2d4a3d9a10"`
